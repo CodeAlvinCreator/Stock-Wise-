@@ -24,11 +24,13 @@ def create_app(config_class=Config):
     from app.routes.stock_counts import stock_counts_bp
     from app.routes.auth import auth_bp
     from app.routes.products import products_bp
+    from app.routes.reports import reports_bp
     from app.routes.stock_movements import bp as stock_movements_bp
     
     app.register_blueprint(stock_counts_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(products_bp)
+    app.register_blueprint(reports_bp)
     app.register_blueprint(stock_movements_bp)
 
     return app
