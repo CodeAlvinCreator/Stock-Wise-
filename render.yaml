@@ -1,0 +1,35 @@
+# Render Blueprint for StockWise: one Flask API and one PostgreSQL database.
+# Render reads this file when you choose New > Blueprint in the dashboard.
+
+services:
+  - type: web
+    name: stockwise-api
+    runtime: python
+    plan: free
+    region: frankfurt            # closest Render region to Kigali; must match the database
+    rootDir: backend             # only changes inside backend/ trigger a new deploy
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    # Free instances cannot use a pre-deploy command, so the database
+    # migration runs here, just before the server starts.
+    startCommand: flask db upgrade && gunicorn run:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass  # deploy only after GitHub Actions CI passes
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.12"
+      - key: FLASK_APP
+        value: run.py
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stockwise-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true      # Render creates a random 256-bit secret once
+
+databases:
+  - name: stockwise-db
+    plan: free                   # expires 30 days after creation (14-day grace period)
+    region: frankfurt
+    databaseName: stockwise
+    user: stockwise
