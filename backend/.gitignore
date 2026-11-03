@@ -5,5 +5,7 @@ __pycache__/
 stockwise.db
 instance/
 *.db
-.venv/.pytest_cache/
+.venv/
+.pytest_cache/
 .ruff_cache/
+.DS_Store
