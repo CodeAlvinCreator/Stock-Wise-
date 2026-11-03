@@ -21,5 +21,7 @@ def create_app(config_class=Config):
     CORS(app)
 
     from app import models  # noqa: F401
+    from app.routes.stock_counts import stock_counts_bp
+    app.register_blueprint(stock_counts_bp)
 
     return app
