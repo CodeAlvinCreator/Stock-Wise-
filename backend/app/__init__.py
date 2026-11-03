@@ -22,4 +22,7 @@ def create_app(config_class=Config):
 
     from app import models  # noqa: F401
 
+    from app.routes.products import products_bp
+    app.register_blueprint(products_bp)
+
     return app
