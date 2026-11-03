@@ -25,4 +25,7 @@ def create_app(config_class=Config):
 
     app.register_blueprint(auth_bp)
 
+    from app.routes.products import products_bp
+    app.register_blueprint(products_bp)
+
     return app
