@@ -1,8 +1,8 @@
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from flask_jwt_extended import JWTManager
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
+from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
 
 from app.config import Config
 
@@ -21,5 +21,8 @@ def create_app(config_class=Config):
     CORS(app)
 
     from app import models  # noqa: F401
+    from app.routes.stock_movements import bp as stock_movements_bp
+
+    app.register_blueprint(stock_movements_bp)
 
     return app

@@ -51,7 +51,7 @@ class StockMovement(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     product_id = db.Column(db.String(36), db.ForeignKey("products.id"), nullable=False)
     user_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
-    movement_type = db.Column(db.String(20), nullable=False)  # in / out / adjustment
+    movement_type = db.Column(db.String(20), nullable=False)  # purchase / sale / return / damage
     quantity = db.Column(db.Integer, nullable=False)
     note = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=utcnow)
