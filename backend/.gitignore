@@ -5,4 +5,5 @@ __pycache__/
 stockwise.db
 instance/
 *.db
-.venv/
+.venv/.pytest_cache/
+.ruff_cache/
