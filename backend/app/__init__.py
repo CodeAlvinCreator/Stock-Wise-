@@ -21,5 +21,8 @@ def create_app(config_class=Config):
     CORS(app)
 
     from app import models  # noqa: F401
+    from app.routes.auth import auth_bp
+
+    app.register_blueprint(auth_bp)
 
     return app
