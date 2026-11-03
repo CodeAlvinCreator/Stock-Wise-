@@ -1,4 +1,4 @@
- import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
 import { fetchProductsWithStock, formatRWF, stockStatus, LOW_STOCK, type ProductWithStock } from "../products";
 
