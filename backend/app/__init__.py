@@ -3,6 +3,7 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 
 from app.config import Config
 
@@ -28,5 +29,12 @@ def create_app(config_class=Config):
     app.register_blueprint(auth_bp)
     app.register_blueprint(products_bp)
     app.register_blueprint(stock_movements_bp)
+
+    @app.get("/api/health")
+    def health():
+        # Render calls this to decide if a deploy is healthy. It also runs a
+        # tiny query, so a broken DATABASE_URL shows up here straight away.
+        db.session.execute(text("SELECT 1"))
+        return {"status": "ok"}, 200
 
     return app
