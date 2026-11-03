@@ -6,6 +6,7 @@ from app.config import Config
 class TestConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    JWT_SECRET_KEY = "test-secret-key-that-is-at-least-32-bytes-long"
 
 
 @pytest.fixture
