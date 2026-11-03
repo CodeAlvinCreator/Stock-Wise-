@@ -1,8 +1,8 @@
 from flask import Flask
-from flask_cors import CORS
-from flask_jwt_extended import JWTManager
-from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_jwt_extended import JWTManager
+from flask_cors import CORS
 from sqlalchemy import text
 
 from app.config import Config
@@ -22,14 +22,16 @@ def create_app(config_class=Config):
     CORS(app)
 
     from app import models  # noqa: F401
+    from app.routes.stock_counts import stock_counts_bp
     from app.routes.auth import auth_bp
     from app.routes.products import products_bp
-    from app.routes.stock_counts import stock_counts_bp
+    from app.routes.reports import reports_bp
     from app.routes.stock_movements import bp as stock_movements_bp
-
+    
+    app.register_blueprint(stock_counts_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(products_bp)
-    app.register_blueprint(stock_counts_bp)
+    app.register_blueprint(reports_bp)
     app.register_blueprint(stock_movements_bp)
 
     @app.get("/api/health")
