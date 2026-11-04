@@ -1,32 +1,52 @@
-# React + TypeScript + Vite
+# StockWise frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite + TypeScript app for StockWise. It talks to the Flask API in `../backend`.
 
-Currently, two official plugins are available:
+## Run it on your laptop
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+You need Node.js 20 or newer (`node -v` to check).
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Open http://localhost:5173. The backend must also be running (`cd backend && flask run`),
+because `.env` points the app at `http://localhost:5000`. To use the live Render API instead,
+put its URL in `.env` as `VITE_API_URL`.
+
+## Screens
+
+| Route | Screen | API it calls |
+| --- | --- | --- |
+| `/login` | Log in or register a new shop | `POST /api/auth/login`, `POST /api/auth/register` |
+| `/products` | Product list with stock badges, search, filters, add product | `GET /api/products`, `POST /api/products`, `GET /api/products/<id>/stock` |
+| `/movements` | Record a purchase, sale, return or damage, with a stock preview | `POST /api/movements` |
+| `/count` | Blind stock count: expected number shown only after saving | `POST /api/counts` |
+| `/reports` | Inventory value report (owner only), printable for lenders | `GET /api/reports/valuation` |
+
+## Files
+
+- `src/api.ts`: every API call, the login token, and the TypeScript types for API data
+- `src/auth/`: login state. `business_id` and `role` are read from the JWT
+- `src/useProducts.ts`: loads this shop's products and their current stock
+- `src/components/`: app bar + bottom navigation (`Screen`), stock badge
+- `src/pages/`: one file per screen
+- `src/index.css`: all styles. Colours match the Figma file's "StockWise colors" variables
+
+## Checks (the same ones CI runs)
+
+```
+npm run lint
+npm run build
+```
+
+## Known gaps
+
+- `GET /api/products` returns every shop's products, so the app filters by the logged-in shop.
+  The backend should filter instead.
+- `POST /api/counts` compares against `quantity_on_hand`, which movements don't update, so
+  "expected" is wrong after any movement. It should use the movement-based stock.
+- Offline mode (service worker + IndexedDB queue) is planned for Sprint 3.

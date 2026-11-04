@@ -1,30 +1,32 @@
-import { Routes, Route, Navigate } from "react-router-dom";
-import type { ReactNode } from "react";
-import { isLoggedIn } from "./api";
-import Layout from "./components/Layout";
-import Login from "./pages/Login";
-import Products from "./pages/Products";
-import StockMovements from "./pages/StockMovements";
-import StockCount from "./pages/StockCount";
-import Investigate from "./pages/Investigate";
-import InventoryValue from "./pages/InventoryValue";
+import type { ReactNode } from 'react'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { AuthProvider } from './auth/AuthProvider'
+import { useAuth } from './auth/context'
+import { InventoryValuePage } from './pages/InventoryValuePage'
+import { LoginPage } from './pages/LoginPage'
+import { ProductsPage } from './pages/ProductsPage'
+import { RecordMovementPage } from './pages/RecordMovementPage'
+import { StockCountPage } from './pages/StockCountPage'
 
-function RequireAuth({ children }: { children: ReactNode }) {
-  return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />;
+// Sends anyone who isn't logged in back to the login page
+function RequireLogin({ children }: { children: ReactNode }) {
+  const { session } = useAuth()
+  return session ? children : <Navigate to="/login" replace />
 }
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route element={<RequireAuth><Layout /></RequireAuth>}>
-        <Route path="/products" element={<Products />} />
-        <Route path="/movements" element={<StockMovements />} />
-        <Route path="/count" element={<StockCount />} />
-        <Route path="/investigate" element={<Investigate />} />
-        <Route path="/reports" element={<InventoryValue />} />
-      </Route>
-      <Route path="*" element={<Navigate to={isLoggedIn() ? "/products" : "/login"} replace />} />
-    </Routes>
-  );
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/products" element={<RequireLogin><ProductsPage /></RequireLogin>} />
+          <Route path="/movements" element={<RequireLogin><RecordMovementPage /></RequireLogin>} />
+          <Route path="/count" element={<RequireLogin><StockCountPage /></RequireLogin>} />
+          <Route path="/reports" element={<RequireLogin><InventoryValuePage /></RequireLogin>} />
+          <Route path="*" element={<Navigate to="/products" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  )
 }
