@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { fetchProductsWithStock, formatRWF } from "../products";
 
-type Line = { name: string; quantity: number; value: number };
+type Line = { key: string; name: string; quantity: number; value: number };
 
 type ValuationResponse = {
   total_value?: number;
@@ -22,7 +22,9 @@ export default function InventoryValue() {
     async function load() {
       try {
         const d = await api<ValuationResponse>("/api/reports/valuation");
-        const items = (d.products ?? d.items ?? []).map((p) => ({
+        // Not implemented on the backend yet; the fallback below is used until it is.
+        const items = (d.products ?? d.items ?? []).map((p, i) => ({
+          key: `${p.name}-${i}`,
           name: p.name,
           quantity: p.quantity ?? p.stock ?? 0,
           value: p.value ?? 0,
@@ -35,11 +37,13 @@ export default function InventoryValue() {
           const products = await fetchProductsWithStock();
           const items = products.map((p) => {
             const qty = p.stock ?? 0;
-            return { name: p.name, quantity: qty, value: qty * (p.unit_cost ?? 0) };
+            return { key: p.id, name: p.name, quantity: qty, value: qty * (p.unit_cost ?? 0) };
           });
           setLines(items);
           setTotal(items.reduce((s, x) => s + x.value, 0));
-          setSource("Calculated from current stock × unit cost");
+          setSource(products.some((p) => p.unit_cost !== undefined)
+            ? "Calculated from current stock × unit cost"
+            : "Unit costs are not stored by the backend yet, so values show 0");
         } catch {
           setError("Could not load inventory value. Is the backend running?");
         }
@@ -74,7 +78,7 @@ export default function InventoryValue() {
           <thead><tr><th>Product</th><th>Qty</th><th>Value (RWF)</th></tr></thead>
           <tbody>
             {lines.map((l) => (
-              <tr key={l.name}><td>{l.name}</td><td>{l.quantity}</td><td>{Math.round(l.value).toLocaleString()}</td></tr>
+              <tr key={l.key}><td>{l.name}</td><td>{l.quantity}</td><td>{Math.round(l.value).toLocaleString()}</td></tr>
             ))}
           </tbody>
         </table>
@@ -82,7 +86,7 @@ export default function InventoryValue() {
       </div>
 
       {outOfStock.map((l) => (
-        <div className="alert" key={l.name}>{l.name} is out of stock. Restock before your lender visit.</div>
+        <div className="alert" key={l.key}>{l.name} is out of stock. Restock before your lender visit.</div>
       ))}
 
       <div className="actions no-print">

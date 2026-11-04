@@ -1,4 +1,4 @@
- import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
 import { fetchProductsWithStock, type ProductWithStock } from "../products";
 
@@ -39,18 +39,22 @@ export default function StockMovements() {
     e.preventDefault();
     setError("");
     setMessage("");
+    if (!Number.isInteger(qty) || qty <= 0) {
+      setError("Quantity must be a whole number above 0.");
+      return;
+    }
     setSaving(true);
     try {
       await api("/api/movements", {
         method: "POST",
-        body: JSON.stringify({ product_id: productId, type, quantity: qty, note: note || undefined }),
+        body: JSON.stringify({ product_id: productId, movement_type: type, quantity: qty, note: note || undefined }),
       });
       setMessage(`Saved: ${type} of ${qty} × ${product?.name ?? "product"}.`);
       setQuantity("");
       setNote("");
       load();
-    } catch {
-      setError("Could not save the movement.");
+    } catch (err) {
+      setError(err instanceof Error ? `Could not save the movement: ${err.message}` : "Could not save the movement.");
     } finally {
       setSaving(false);
     }
@@ -83,13 +87,13 @@ export default function StockMovements() {
 
       <label className="field">
         <span>Quantity (units)</span>
-        <input className="input" type="number" min="1" value={quantity}
+        <input className="input" type="number" min="1" step="1" value={quantity}
           onChange={(e) => setQuantity(e.target.value)} required />
       </label>
 
       <label className="field">
         <span>Note</span>
-        <input className="input" placeholder="e.g. Delivery from wholesaler" value={note}
+        <input className="input" placeholder="e.g. Delivery from wholesaler" value={note} maxLength={255}
           onChange={(e) => setNote(e.target.value)} />
       </label>
 

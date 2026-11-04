@@ -36,9 +36,10 @@ export default function Investigate() {
     setError("");
     setMessage("");
     try {
+      // There is no investigations endpoint on the backend yet (routes/discrepancies.py is empty).
       await api("/api/investigations", {
         method: "POST",
-        body: JSON.stringify({ product_id: d.product_id, reason, finding }),
+        body: JSON.stringify({ discrepancy_id: d.discrepancy_id, product_id: d.product_id, reason, finding }),
       });
       setMessage("Sent to the owner for approval.");
     } catch {
@@ -62,7 +63,7 @@ export default function Investigate() {
         <div className="summary-line"><span>Expected</span><b>{d.expected} units</b></div>
         <div className="summary-line"><span>Counted</span><b>{d.counted} units</b></div>
         <div className="summary-line"><span>Variance</span>
-          <b>{d.variance > 0 ? "+" : ""}{d.variance} units ({d.variance > 0 ? "+" : "−"}{formatRWF(Math.abs(d.variance * d.unit_cost))})</b>
+          <b>{d.variance > 0 ? "+" : ""}{d.variance} units{d.unit_cost > 0 && ` (${d.variance > 0 ? "+" : "−"}${formatRWF(Math.abs(d.variance * d.unit_cost))})`}</b>
         </div>
       </div>
 

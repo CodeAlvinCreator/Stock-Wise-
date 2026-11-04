@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
-import { fetchProductsWithStock, formatRWF, stockStatus, LOW_STOCK, type ProductWithStock } from "../products";
+import { createProduct, fetchProductsWithStock, formatRWF, isLowStock, stockStatus, type ProductWithStock } from "../products";
 
 type Filter = "all" | "low" | "out";
 
@@ -11,9 +11,12 @@ export default function Products() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
-  const [unitCost, setUnitCost] = useState("");
+  const [unit, setUnit] = useState("");
+  const [openingStock, setOpeningStock] = useState("");
+  const [reorderLevel, setReorderLevel] = useState("");
 
   async function load() {
     setLoading(true);
@@ -32,19 +35,33 @@ export default function Products() {
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
     setError("");
+    setSaving(true);
+    const opening = Number(openingStock) || 0;
     try {
-      await api("/api/products", {
-        method: "POST",
-        body: JSON.stringify({ name, sku: sku || undefined, unit_cost: Number(unitCost) }),
+      const product = await createProduct({
+        name,
+        sku: sku || undefined,
+        unit: unit || undefined,
+        quantity_on_hand: opening,
+        reorder_level: Number(reorderLevel) || 0,
       });
-      setName(""); setSku(""); setUnitCost(""); setShowForm(false);
+      // Stock is the sum of movements, so record the opening stock as a purchase.
+      if (opening > 0) {
+        await api("/api/movements", {
+          method: "POST",
+          body: JSON.stringify({ product_id: product.id, movement_type: "purchase", quantity: opening, note: "Opening stock" }),
+        });
+      }
+      setName(""); setSku(""); setUnit(""); setOpeningStock(""); setReorderLevel(""); setShowForm(false);
       load();
-    } catch {
-      setError("Could not add the product.");
+    } catch (err) {
+      setError(err instanceof Error ? `Could not add the product: ${err.message}` : "Could not add the product.");
+    } finally {
+      setSaving(false);
     }
   }
 
-  const isLow = (r: ProductWithStock) => r.stock !== null && r.stock > 0 && r.stock <= LOW_STOCK;
+  const isLow = (r: ProductWithStock) => isLowStock(r.stock, r.reorder_level);
   const isOut = (r: ProductWithStock) => r.stock !== null && r.stock <= 0;
 
   const lowCount = rows.filter(isLow).length;
@@ -76,17 +93,17 @@ export default function Products() {
 
       <div className="list">
         {visible.map((r) => {
-          const status = stockStatus(r.stock);
+          const status = stockStatus(r.stock, r.reorder_level);
           return (
             <div className="row" key={r.id}>
               <div>
                 <div className="row-title">{r.name}</div>
                 <div className="row-sub">
-                  {r.sku ?? "No SKU"}{r.unit_cost !== undefined ? ` · ${formatRWF(r.unit_cost)} / unit` : ""}
+                  {r.sku || "No SKU"}{r.unit_cost !== undefined ? ` · ${formatRWF(r.unit_cost)} / unit` : ""}
                 </div>
               </div>
               <div className="row-right">
-                <div className="row-title">{r.stock ?? "—"} units</div>
+                <div className="row-title">{r.stock ?? "—"} {r.unit || "units"}</div>
                 <span className={status.cls}>{status.label}</span>
               </div>
             </div>
@@ -103,9 +120,14 @@ export default function Products() {
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} required /></label>
           <label className="field"><span>SKU (optional)</span>
             <input className="input" value={sku} onChange={(e) => setSku(e.target.value)} /></label>
-          <label className="field"><span>Unit cost (RWF)</span>
-            <input className="input" type="number" min="0" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} required /></label>
-          <button className="btn btn-primary" type="submit">Save product</button>
+          <label className="field"><span>Unit (optional)</span>
+            <input className="input" placeholder="e.g. bags, kg, bottles" value={unit} onChange={(e) => setUnit(e.target.value)} /></label>
+          <label className="field"><span>Opening stock</span>
+            <input className="input" type="number" min="0" step="1" value={openingStock} onChange={(e) => setOpeningStock(e.target.value)} /></label>
+          <label className="field"><span>Reorder level (optional)</span>
+            <input className="input" type="number" min="0" step="1" placeholder="Warn when stock is at or below this"
+              value={reorderLevel} onChange={(e) => setReorderLevel(e.target.value)} /></label>
+          <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Saving..." : "Save product"}</button>
         </form>
       )}
 

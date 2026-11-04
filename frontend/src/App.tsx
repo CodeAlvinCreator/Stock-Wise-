@@ -1,6 +1,6 @@
- import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import type { ReactNode } from "react";
-import { getToken } from "./api";
+import { isLoggedIn } from "./api";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Products from "./pages/Products";
@@ -10,7 +10,7 @@ import Investigate from "./pages/Investigate";
 import InventoryValue from "./pages/InventoryValue";
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  return getToken() ? <>{children}</> : <Navigate to="/login" replace />;
+  return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
 export default function App() {
@@ -24,7 +24,7 @@ export default function App() {
         <Route path="/investigate" element={<Investigate />} />
         <Route path="/reports" element={<InventoryValue />} />
       </Route>
-      <Route path="*" element={<Navigate to={getToken() ? "/products" : "/login"} replace />} />
+      <Route path="*" element={<Navigate to={isLoggedIn() ? "/products" : "/login"} replace />} />
     </Routes>
   );
 }
