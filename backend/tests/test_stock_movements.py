@@ -1,8 +1,10 @@
+import uuid
+
 import pytest
 from flask_jwt_extended import create_access_token
 
 from app import db
-from app.models import Business, Product, User
+from app.models import Business, Product, StockMovement, User
 
 
 @pytest.fixture
@@ -84,3 +86,50 @@ def test_cannot_touch_other_business_product(client, setup):
                     headers=setup["headers"])
     assert r.status_code == 404
     assert client.get(f"/api/products/{p.id}/stock", headers=setup["headers"]).status_code == 404
+
+
+def test_same_client_id_twice_creates_one_row(client, setup):
+    movement_id = str(uuid.uuid4())
+    first = post(client, setup, "purchase", 20, id=movement_id)
+    second = post(client, setup, "purchase", 20, id=movement_id)
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert second.get_json()["id"] == movement_id
+    assert StockMovement.query.count() == 1
+    assert stock(client, setup) == 20
+
+
+@pytest.mark.parametrize("bad_id", ["not-a-uuid", 123, ""])
+def test_invalid_client_id_returns_400(client, setup, bad_id):
+    r = post(client, setup, "purchase", 5, id=bad_id)
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "id must be a valid UUID"
+
+
+def test_movement_without_client_id_still_works(client, setup):
+    r = post(client, setup, "purchase", 5)
+    assert r.status_code == 201
+    assert r.get_json()["id"]
+
+
+def test_client_id_used_by_another_business_returns_409(client, setup):
+    other = Business(name="Other")
+    db.session.add(other)
+    db.session.flush()
+    other_user = User(business_id=other.id, name="O", email="o@x.com", password_hash="x")
+    other_product = Product(business_id=other.id, name="Secret")
+    db.session.add_all([other_user, other_product])
+    db.session.flush()
+    taken = str(uuid.uuid4())
+    db.session.add(
+        StockMovement(
+            id=taken,
+            product_id=other_product.id,
+            user_id=other_user.id,
+            movement_type="purchase",
+            quantity=1,
+        )
+    )
+    db.session.commit()
+    r = post(client, setup, "purchase", 5, id=taken)
+    assert r.status_code == 409
