@@ -42,6 +42,9 @@ class Product(db.Model):
     unit = db.Column(db.String(30))
     quantity_on_hand = db.Column(db.Integer, nullable=False, default=0)
     reorder_level = db.Column(db.Integer, default=0)
+    # Cost price of one unit in Rwandan francs. RWF has no coins in everyday
+    # use, so a whole number is exact and avoids floating-point rounding.
+    unit_cost = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     created_at = db.Column(db.DateTime, default=utcnow)
 
 

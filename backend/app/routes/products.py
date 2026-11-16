@@ -16,6 +16,7 @@ def product_to_dict(p):
         "unit": p.unit,
         "quantity_on_hand": p.quantity_on_hand,
         "reorder_level": p.reorder_level,
+        "unit_cost": p.unit_cost,
     }
 
 
@@ -40,6 +41,7 @@ def create_product():
         unit=data.get("unit"),
         quantity_on_hand=data.get("quantity_on_hand", 0),
         reorder_level=data.get("reorder_level", 0),
+        unit_cost=data.get("unit_cost", 0),
     )
     db.session.add(product)
     db.session.commit()
@@ -54,7 +56,7 @@ def update_product(product_id):
         return jsonify({"error": "product not found"}), 404
 
     data = request.get_json() or {}
-    for field in ["name", "sku", "unit", "quantity_on_hand", "reorder_level"]:
+    for field in ["name", "sku", "unit", "quantity_on_hand", "reorder_level", "unit_cost"]:
         if field in data:
             setattr(product, field, data[field])
 
