@@ -14,47 +14,14 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify
 from flask_jwt_extended import get_jwt_identity, jwt_required
-from sqlalchemy import case, func
 
 from app import db
-from app.models import Product, StockMovement, User
+from app.models import Product, User
+from app.services.stock import stock_by_product
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/api/reports")
 
-# +1 adds stock, -1 removes stock. Keep this in step with the movements API
-# (backend/app/routes/stock_movements.py). Once that branch is merged, both
-# files should import one shared copy so the two rules can never drift apart.
-MOVEMENT_SIGNS = {
-    "purchase": 1,
-    "return": 1,
-    "sale": -1,
-    "damage": -1,
-}
-
 CURRENCY = "RWF"
-
-
-def stock_by_product(business_id):
-    """Return {product_id: current_stock} for every product in one business.
-
-    Uses a single GROUP BY query instead of one query per product, so the
-    report stays fast when a shop has hundreds of products.
-    """
-    signed_quantity = case(
-        *[
-            (StockMovement.movement_type == movement_type, StockMovement.quantity * sign)
-            for movement_type, sign in MOVEMENT_SIGNS.items()
-        ],
-        else_=0,
-    )
-    rows = (
-        db.session.query(StockMovement.product_id, func.sum(signed_quantity))
-        .join(Product, Product.id == StockMovement.product_id)
-        .filter(Product.business_id == business_id)
-        .group_by(StockMovement.product_id)
-        .all()
-    )
-    return {product_id: int(total or 0) for product_id, total in rows}
 
 
 def build_valuation(business_id):

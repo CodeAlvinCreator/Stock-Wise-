@@ -24,7 +24,9 @@ class User(db.Model):
     __tablename__ = "users"
 
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    business_id = db.Column(db.String(36), db.ForeignKey("businesses.id"), nullable=False)
+    business_id = db.Column(
+        db.String(36), db.ForeignKey("businesses.id"), nullable=False, index=True
+    )
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
@@ -36,7 +38,9 @@ class Product(db.Model):
     __tablename__ = "products"
 
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    business_id = db.Column(db.String(36), db.ForeignKey("businesses.id"), nullable=False)
+    business_id = db.Column(
+        db.String(36), db.ForeignKey("businesses.id"), nullable=False, index=True
+    )
     name = db.Column(db.String(150), nullable=False)
     sku = db.Column(db.String(60))
     unit = db.Column(db.String(30))
@@ -52,7 +56,9 @@ class StockMovement(db.Model):
     __tablename__ = "stock_movements"
 
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    product_id = db.Column(db.String(36), db.ForeignKey("products.id"), nullable=False)
+    product_id = db.Column(
+        db.String(36), db.ForeignKey("products.id"), nullable=False, index=True
+    )
     user_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
     movement_type = db.Column(db.String(20), nullable=False)  # purchase / sale / return / damage
     quantity = db.Column(db.Integer, nullable=False)
@@ -64,7 +70,9 @@ class StockCount(db.Model):
     __tablename__ = "stock_counts"
 
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    product_id = db.Column(db.String(36), db.ForeignKey("products.id"), nullable=False)
+    product_id = db.Column(
+        db.String(36), db.ForeignKey("products.id"), nullable=False, index=True
+    )
     user_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
     expected_quantity = db.Column(db.Integer, nullable=False)
     counted_quantity = db.Column(db.Integer, nullable=False)
@@ -75,11 +83,21 @@ class Discrepancy(db.Model):
     __tablename__ = "discrepancies"
 
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    stock_count_id = db.Column(db.String(36), db.ForeignKey("stock_counts.id"), nullable=False)
-    product_id = db.Column(db.String(36), db.ForeignKey("products.id"), nullable=False)
+    stock_count_id = db.Column(
+        db.String(36), db.ForeignKey("stock_counts.id"), nullable=False, index=True
+    )
+    product_id = db.Column(
+        db.String(36), db.ForeignKey("products.id"), nullable=False, index=True
+    )
     difference = db.Column(db.Integer, nullable=False)
-    status = db.Column(db.String(20), nullable=False, default="open")  # open / resolved
+    # open -> investigated -> resolved
+    status = db.Column(db.String(20), nullable=False, default="open")
+    cause = db.Column(db.String(60), nullable=True)
+    finding = db.Column(db.Text, nullable=True)
+    investigated_by = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True)
+    investigated_at = db.Column(db.DateTime, nullable=True)
     resolved_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    resolved_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow)
 
 
@@ -87,7 +105,7 @@ class AuditLog(db.Model):
     __tablename__ = "audit_logs"
 
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    business_id = db.Column(db.String(36), db.ForeignKey("businesses.id"))
+    business_id = db.Column(db.String(36), db.ForeignKey("businesses.id"), index=True)
     user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
     action = db.Column(db.String(100), nullable=False)
     entity_type = db.Column(db.String(60))
