@@ -1,19 +1,11 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
-from sqlalchemy import func
 
 from app import db
 from app.models import Product, StockMovement, User
+from app.services.stock import PUBLIC_MOVEMENT_TYPES, current_stock
 
 bp = Blueprint("stock_movements", __name__, url_prefix="/api")
-
-# +1 adds stock, -1 removes stock.
-MOVEMENT_SIGNS = {
-    "purchase": 1,
-    "return": 1,
-    "sale": -1,
-    "damage": -1,
-}
 
 
 def _current_user():
@@ -26,29 +18,6 @@ def _product_for(user, product_id):
     if product is None or product.business_id != user.business_id:
         return None
     return product
-
-
-def current_stock(product_id):
-    """Stock = sum of signed movements (purchase/return +, sale/damage -)."""
-    total = (
-        db.session.query(
-            func.coalesce(
-                func.sum(
-                    db.case(
-                        *[
-                            (StockMovement.movement_type == t, StockMovement.quantity * s)
-                            for t, s in MOVEMENT_SIGNS.items()
-                        ],
-                        else_=0,
-                    )
-                ),
-                0,
-            )
-        )
-        .filter(StockMovement.product_id == product_id)
-        .scalar()
-    )
-    return int(total)
 
 
 @bp.route("/movements", methods=["POST"])
@@ -66,9 +35,9 @@ def create_movement():
 
     if not product_id:
         return jsonify(error="product_id is required"), 400
-    if movement_type not in MOVEMENT_SIGNS:
+    if movement_type not in PUBLIC_MOVEMENT_TYPES:
         return jsonify(
-            error=f"movement_type must be one of: {', '.join(MOVEMENT_SIGNS)}"
+            error=f"movement_type must be one of: {', '.join(PUBLIC_MOVEMENT_TYPES)}"
         ), 400
     # bool is a subclass of int in Python, so reject it explicitly.
     if not isinstance(quantity, int) or isinstance(quantity, bool) or quantity <= 0:
