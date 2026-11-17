@@ -2,7 +2,9 @@ import type { ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/context'
+import { DiscrepanciesPage } from './pages/DiscrepanciesPage'
 import { InventoryValuePage } from './pages/InventoryValuePage'
+import { InvestigatePage } from './pages/InvestigatePage'
 import { LoginPage } from './pages/LoginPage'
 import { ProductsPage } from './pages/ProductsPage'
 import { RecordMovementPage } from './pages/RecordMovementPage'
@@ -23,6 +25,8 @@ export default function App() {
           <Route path="/products" element={<RequireLogin><ProductsPage /></RequireLogin>} />
           <Route path="/movements" element={<RequireLogin><RecordMovementPage /></RequireLogin>} />
           <Route path="/count" element={<RequireLogin><StockCountPage /></RequireLogin>} />
+          <Route path="/investigate" element={<RequireLogin><InvestigatePage /></RequireLogin>} />
+          <Route path="/discrepancies" element={<RequireLogin><DiscrepanciesPage /></RequireLogin>} />
           <Route path="/reports" element={<RequireLogin><InventoryValuePage /></RequireLogin>} />
           <Route path="*" element={<Navigate to="/products" replace />} />
         </Routes>
