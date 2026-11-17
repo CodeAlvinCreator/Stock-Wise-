@@ -24,6 +24,7 @@ export function Screen({ title, children }: { title: string; children: ReactNode
         <Tab to="/products" label="Products" icon={<BoxIcon />} />
         <Tab to="/movements" label="Movements" icon={<ArrowsIcon />} />
         <Tab to="/count" label="Count" icon={<ClipboardIcon />} />
+        <Tab to="/discrepancies" label="Issues" icon={<AlertIcon />} />
         <Tab to="/reports" label="Reports" icon={<ChartIcon />} />
       </nav>
     </div>
@@ -72,6 +73,14 @@ function ClipboardIcon() {
   return (
     <svg {...iconProps}>
       <path d="M9 4h6v3H9z M7 5H5v16h14V5h-2 M8 13l3 3 5-5" />
+    </svg>
+  )
+}
+
+function AlertIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M12 3l10 18H2z M12 10v5 M12 18v.01" />
     </svg>
   )
 }

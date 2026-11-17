@@ -102,6 +102,50 @@ export interface Valuation {
   generated_at: string
 }
 
+export type DiscrepancyStatus = 'open' | 'investigated' | 'resolved'
+
+export type Cause =
+  | 'unrecorded_sale'
+  | 'damaged_or_expired'
+  | 'theft'
+  | 'counting_mistake'
+  | 'supplier_short_delivery'
+  | 'other'
+
+// The values must match CAUSES in backend/app/routes/discrepancies.py exactly
+export const CAUSE_OPTIONS: { value: Cause; label: string }[] = [
+  { value: 'unrecorded_sale', label: 'Unrecorded sale' },
+  { value: 'damaged_or_expired', label: 'Damaged or expired' },
+  { value: 'theft', label: 'Theft' },
+  { value: 'counting_mistake', label: 'Counting mistake' },
+  { value: 'supplier_short_delivery', label: 'Supplier delivered less' },
+  { value: 'other', label: 'Other' },
+]
+
+export function causeLabel(cause: string | null): string {
+  return CAUSE_OPTIONS.find((c) => c.value === cause)?.label ?? cause ?? '—'
+}
+
+export interface Discrepancy {
+  id: string
+  product_id: string
+  product_name: string
+  difference: number // counted - expected, negative means a shortage
+  value_rwf: number // difference * unit_cost, negative for a shortage
+  status: DiscrepancyStatus
+  cause: Cause | null
+  finding: string | null
+  created_at: string
+  investigated_at: string | null
+  resolved_at: string | null
+}
+
+export interface ApproveResult {
+  discrepancy: Discrepancy
+  movement_id: string
+  stock_after: number
+}
+
 // ---------- Endpoints ----------
 
 export const api = {
@@ -135,9 +179,24 @@ export const api = {
     request<CountResult>('/api/counts', { method: 'POST', body: { product_id, counted_quantity } }),
 
   getValuation: () => request<Valuation>('/api/reports/valuation'),
+
+  listDiscrepancies: (status?: DiscrepancyStatus) =>
+    request<{ discrepancies: Discrepancy[] }>(`/api/discrepancies${status ? `?status=${status}` : ''}`),
+
+  investigateDiscrepancy: (id: string, cause: Cause, finding: string) =>
+    request<Discrepancy>(`/api/discrepancies/${id}/investigate`, { method: 'POST', body: { cause, finding } }),
+
+  // Owner only. The backend adds a correcting movement so stock matches the count.
+  approveDiscrepancy: (id: string) =>
+    request<ApproveResult>(`/api/discrepancies/${id}/approve`, { method: 'POST' }),
 }
 
 // Formats whole Rwandan francs, for example 117500 -> "117,500 RWF"
 export function formatRwf(amount: number): string {
   return `${amount.toLocaleString('en-US')} RWF`
+}
+
+// Signed difference for display: +3 for a surplus, −2 for a shortage
+export function formatDifference(diff: number): string {
+  return diff > 0 ? `+${diff}` : diff < 0 ? `−${Math.abs(diff)}` : '0'
 }
