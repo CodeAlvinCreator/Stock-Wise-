@@ -2,12 +2,11 @@ import pytest
 from flask_jwt_extended import create_access_token
 
 from app import db
-from app.models import Business, Discrepancy, Product, StockCount, User
+from app.models import Business, Discrepancy, Product, StockCount, StockMovement, User
 
 
 @pytest.fixture
 def seed(app):
-    app.config["JWT_SECRET_KEY"] = "test-secret"
     business = Business(name="Test Shop")
     db.session.add(business)
     db.session.flush()
@@ -17,8 +16,13 @@ def seed(app):
         email="tester@example.com",
         password_hash="not-a-real-hash",
     )
-    product = Product(business_id=business.id, name="Sugar", quantity_on_hand=15)
+    product = Product(business_id=business.id, name="Sugar")
     db.session.add_all([user, product])
+    db.session.flush()
+    # Stock comes from the ledger: one purchase of 15.
+    db.session.add(
+        StockMovement(product_id=product.id, user_id=user.id, movement_type="purchase", quantity=15)
+    )
     db.session.commit()
     token = create_access_token(identity=user.id)
     return {
