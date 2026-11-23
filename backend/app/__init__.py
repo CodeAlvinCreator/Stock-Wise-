@@ -22,6 +22,7 @@ def create_app(config_class=Config):
     CORS(app)
 
     from app import models  # noqa: F401
+    from app.routes.audit import audit_bp
     from app.routes.stock_counts import stock_counts_bp
     from app.routes.auth import auth_bp
     from app.routes.discrepancies import discrepancies_bp
@@ -29,6 +30,7 @@ def create_app(config_class=Config):
     from app.routes.reports import reports_bp
     from app.routes.stock_movements import bp as stock_movements_bp
     
+    app.register_blueprint(audit_bp)
     app.register_blueprint(stock_counts_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(discrepancies_bp)
