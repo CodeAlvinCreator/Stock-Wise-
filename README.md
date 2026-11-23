@@ -51,6 +51,36 @@ Responses: `200` returns `{ "access_token": ... }`, and `401` means the email or
 
 Returns `{"status": "ok"}` with `200`. It also runs a tiny database query, so if the database can't be reached this endpoint returns an error. Render uses it to decide whether a deploy is healthy.
 
+## Audit log (SW-17)
+
+Code: `backend/app/services/audit.py` (writing rows) and `backend/app/routes/audit.py` (reading them).
+
+### Writing a row: `log_action`
+
+```python
+from app.services.audit import log_action
+
+log_action(user, "discrepancy.investigated", "discrepancy", discrepancy.id, {"cause": cause})
+db.session.commit()
+```
+
+- It adds one `AuditLog` row with the user's `business_id` and `id`. `details` is saved as JSON text.
+- **It does not commit.** Call it before your own `db.session.commit()`, so the change and its audit row are saved together, or neither is saved.
+- **The id must exist first.** New rows only get their id when they are flushed, so call `db.session.flush()` before `log_action` when you log a row you just created. Otherwise `entity_id` is saved as empty.
+- Action names use `<entity>.<past tense verb>`: `product.created`, `product.updated`, `count.created`, `movement.created`.
+
+Routes that log today: `POST /api/products`, `PUT /api/products/<id>` (details list the field names that were sent) and `POST /api/counts`.
+
+### `GET /api/audit-logs`
+
+Needs a token. Only the business owner can use it, and the role is checked in the database, not the token.
+
+| Query | Notes |
+|---|---|
+| `limit` | optional, default 50, maximum 200 (bigger values are cut to 200) |
+
+Responses: `200` returns `{"audit_logs": [{id, action, entity_type, entity_id, user_id, details, created_at}]}`, newest first and only for your own business. `400` means `limit` isn't a positive whole number, `401` means the user in the token doesn't exist, and `403` means you aren't an owner.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request and on every push to `main`:
@@ -101,4 +131,8 @@ curl localhost:5000/api/health
 - **Several people editing `app/__init__.py`.** Every new route file registers its blueprint there, so branches often conflict in that file. To resolve: start from `main`'s copy of the file, keeping its line endings and import order, and re-add only your own lines. Keep every `from app.routes... import` line and every `app.register_blueprint(...)` call from both sides. Then run `pytest` before committing. Keeping your branch's copy as close to `main`'s as possible lets git merge future changes on its own. Rewriting the whole file (for example, changing line endings or re-sorting imports) makes the next merge conflict again.
 - **Merge `main` into your branch often.** If `main` gets new PRs while yours is open, GitHub shows conflicts again. Before pushing, run `git fetch origin && git merge origin/main`.
 - **Short test secret in `tests/test_counts.py`.** It sets `JWT_SECRET_KEY = "test-secret"`, so pytest prints `InsecureKeyLengthWarning`. It's harmless, and it goes away if that line is removed, because `conftest.py` already sets a long test key.
-- **Keep junk files out of commits.** `.DS_Store` (macOS) is ignored by the root `.gitignore`. If it shows up in `git status`, don't commit it.
+- **Movements aren't audited yet (SW-17).** `POST /api/movements` doesn't call `log_action` yet, because SW-12 rewrites the imports in `stock_movements.py` and the two would conflict. Once SW-12 is on `main`, add `from app.services.audit import log_action`, then `db.session.flush()` and `log_action(user, "movement.created", "movement", movement.id, {...})` just before the commit, and add a test. With SW-16's offline sync, keep it after the replay check that returns `200`, so a replayed request doesn't log twice.
+- **Expected merge conflicts with SW-17.** SW-13 (`daniel/sw-13-discrepancy-api`) conflicts in the imports of `stock_counts.py`; keep both import lines (`audit`, then `stock`). `daniel_backend` changes `app/__init__.py` from CRLF to LF, so every line conflicts; keep its LF version and re-add the two `audit_bp` lines. SW-12 (`alvin_backend`) and SW-16 (`devis/sw-16-offline-sync`) merge cleanly with SW-17. A merge order with the fewest conflicts is SW-10 → SW-12 → SW-17 → SW-13 → SW-16; SW-16 conflicts with SW-12/SW-13 in `stock_movements.py` whichever goes second.
+- **Products still trust the `business_id` in the request.** `POST /api/products` reads `business_id` from the body and doesn't check it against the logged-in user, and `PUT /api/products/<id>` doesn't check the business either. The audit row always uses the user's own business, so the two can differ. SW-17 kept this behaviour on purpose; fixing it is a separate ticket.
+- **Tests need real users now.** Products routes load the user from the token, so tests must seed a `Business` and `User` and sign the token with `identity=user.id` (see `tests/test_products.py`). A fake identity such as `"test-user"` gets `401`.
+- **Keep junk files out of commits.** `.DS_Store` (macOS) is ignored by the root `.gitignore`. If it shows up in `git status`, don't commit it. Editor folders such as `.vscode/` aren't ignored by the repo; to hide yours without changing a shared file, add `.vscode/` to `.git/info/exclude` (it works like `.gitignore` but stays on your machine).

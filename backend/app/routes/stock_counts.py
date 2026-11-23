@@ -4,6 +4,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from app import db
 from app.models import Discrepancy, Product, StockCount, User
 from app.services.stock import current_stock
+from app.services.audit import log_action
 from app.services.variance import calculate_variance
 
 stock_counts_bp = Blueprint("stock_counts", __name__)
@@ -51,6 +52,18 @@ def create_count():
         )
         db.session.add(discrepancy)
 
+    log_action(
+        user,
+        "count.created",
+        "count",
+        count.id,
+        {
+            "product_id": product.id,
+            "expected": expected,
+            "counted": counted,
+            "difference": result["difference"],
+        },
+    )
     db.session.commit()
 
     return jsonify({

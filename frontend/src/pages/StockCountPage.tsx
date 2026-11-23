@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api'
 import type { CountResult } from '../api'
 import { Screen } from '../components/Screen'
@@ -99,6 +100,11 @@ function CountRow({
               Expected: {result.count.expected_quantity} {unit}
             </span>
             {status}
+            {result.discrepancy && (
+              <Link className="small strong-primary" to={`/investigate?id=${result.discrepancy.id}`}>
+                Investigate now
+              </Link>
+            )}
           </>
         ) : (
           <span className="muted small">Not counted yet</span>
