@@ -1,4 +1,4 @@
-// All calls to the StockWise Flask API go through this file.
+﻿// All calls to the StockWise Flask API go through this file.
 // The API address comes from VITE_API_URL (see .env.example).
 
 const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:5000').replace(/\/$/, '')
@@ -128,7 +128,7 @@ export const api = {
   getStock: (productId: string) =>
     request<{ product_id: string; name: string; stock: number }>(`/api/products/${productId}/stock`),
 
-  recordMovement: (movement: { product_id: string; movement_type: MovementType; quantity: number; note?: string }) =>
+  recordMovement: (movement: { id?: string; product_id: string; movement_type: MovementType; quantity: number; note?: string }) =>
     request<Movement>('/api/movements', { method: 'POST', body: movement }),
 
   submitCount: (product_id: string, counted_quantity: number) =>
