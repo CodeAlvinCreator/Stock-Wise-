@@ -1,9 +1,10 @@
-import { useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import type { MovementType } from '../api'
 import { Screen } from '../components/Screen'
+import { countOutbox, queueMovement } from '../offline/outbox'
 import { useProducts } from '../useProducts'
 
 // Purchases and returns add stock, sales and damage remove it.
@@ -25,7 +26,27 @@ export function RecordMovementPage() {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [unsynced, setUnsynced] = useState(0)
 
+  // Keep the "waiting to sync" number up to date, and refresh the stock
+  // levels once everything has been sent.
+  useEffect(() => {
+    let active = true
+    const refresh = (reloadWhenEmpty: boolean) =>
+      countOutbox().then((waiting) => {
+        if (!active) return
+        setUnsynced(waiting)
+        if (waiting === 0 && reloadWhenEmpty) reload()
+      })
+
+    void refresh(false)
+    const onChange = () => void refresh(true)
+    window.addEventListener('outbox-changed', onChange)
+    return () => {
+      active = false
+      window.removeEventListener('outbox-changed', onChange)
+    }
+  }, [reload])
   // Fall back to the first product until the user picks one
   const productId = chosenId || products[0]?.id || ''
   const product = products.find((p) => p.id === productId)
@@ -39,19 +60,33 @@ export function RecordMovementPage() {
     setBusy(true)
     setError(null)
     setSaved(null)
+
+    // The id is made here, before sending. If the network drops, the queued
+    // copy keeps the same id, so the server can spot a replay.
+    const movement = {
+      id: crypto.randomUUID(),
+      product_id: product.id,
+      movement_type: type,
+      quantity: qty,
+      note: note.trim() || undefined,
+    }
+    const label = TYPES.find((t) => t.value === type)!.label.toLowerCase()
+
     try {
-      await api.recordMovement({
-        product_id: product.id,
-        movement_type: type,
-        quantity: qty,
-        note: note.trim() || undefined,
-      })
-      setSaved(`Saved: ${TYPES.find((t) => t.value === type)!.label.toLowerCase()} of ${qty} ${product.unit || 'units'} of ${product.name}.`)
+      await api.recordMovement(movement)
+      setSaved(`Saved: ${label} of ${qty} ${product.unit || 'units'} of ${product.name}.`)
       setQuantity('')
       setNote('')
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the movement')
+      if (err instanceof ApiError && err.status === 0) {
+        await queueMovement(movement)
+        setSaved('Saved offline. It will sync when you are back online.')
+        setQuantity('')
+        setNote('')
+      } else {
+        setError(err instanceof Error ? err.message : 'Could not save the movement')
+      }
     } finally {
       setBusy(false)
     }
@@ -63,6 +98,12 @@ export function RecordMovementPage() {
       {loading && products.length === 0 && <p className="muted">Loading products…</p>}
       {!loading && products.length === 0 && !loadError && (
         <p className="muted">Add a product first, on the Products tab.</p>
+      )}
+
+      {unsynced > 0 && (
+        <p className="alert alert--ok">
+          {unsynced} movement{unsynced === 1 ? '' : 's'} waiting to sync.
+        </p>
       )}
 
       {products.length > 0 && (
