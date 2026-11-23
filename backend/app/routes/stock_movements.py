@@ -22,29 +22,6 @@ def _product_for(user, product_id):
     return product
 
 
-def current_stock(product_id):
-    """Stock = sum of signed movements (purchase/return +, sale/damage -)."""
-    total = (
-        db.session.query(
-            func.coalesce(
-                func.sum(
-                    db.case(
-                        *[
-                            (StockMovement.movement_type == t, StockMovement.quantity * s)
-                            for t, s in MOVEMENT_SIGNS.items()
-                        ],
-                        else_=0,
-                    )
-                ),
-                0,
-            )
-        )
-        .filter(StockMovement.product_id == product_id)
-        .scalar()
-    )
-    return int(total)
-
-
 def _parse_uuid(value):
     """Return the canonical UUID string, or None if value is not a valid UUID."""
     if not isinstance(value, str):
