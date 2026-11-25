@@ -5,6 +5,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from app import db
 from app.models import Product, StockMovement, User
+from app.services.audit import log_action
 from app.services.stock import PUBLIC_MOVEMENT_TYPES, current_stock
 
 bp = Blueprint("stock_movements", __name__, url_prefix="/api")
@@ -98,6 +99,15 @@ def create_movement():
     if movement_id is not None:
         movement.id = movement_id
     db.session.add(movement)
+    # The movement's id is only filled in when it is flushed, and the audit row needs it.
+    db.session.flush()
+    log_action(
+        user,
+        "movement.created",
+        "movement",
+        movement.id,
+        {"product_id": product_id, "movement_type": movement_type, "quantity": quantity},
+    )
     db.session.commit()
 
     return jsonify(_movement_json(movement)), 201

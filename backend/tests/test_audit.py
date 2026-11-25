@@ -88,6 +88,35 @@ def test_recording_count_writes_one_audit_row(client, seed):
     assert rows[0].entity_id == response.get_json()["count"]["id"]
 
 
+def test_recording_movement_writes_one_audit_row(client, seed):
+    response = client.post(
+        "/api/movements",
+        json={"product_id": seed["product_a"].id, "movement_type": "purchase", "quantity": 5},
+        headers=headers_for(seed["staff_a"]),
+    )
+    assert response.status_code == 201
+
+    rows = AuditLog.query.filter_by(action="movement.created").all()
+    assert len(rows) == 1
+    assert rows[0].entity_id == response.get_json()["id"]
+    assert rows[0].user_id == seed["staff_a"].id
+
+
+def test_replayed_offline_movement_is_not_logged_twice(client, seed):
+    body = {
+        "id": "6f1c1e3a-2b4d-4c5e-9f00-1a2b3c4d5e6f",
+        "product_id": seed["product_a"].id,
+        "movement_type": "sale",
+        "quantity": 2,
+    }
+    first = client.post("/api/movements", json=body, headers=headers_for(seed["staff_a"]))
+    replay = client.post("/api/movements", json=body, headers=headers_for(seed["staff_a"]))
+    assert first.status_code == 201
+    assert replay.status_code == 200
+
+    assert AuditLog.query.filter_by(action="movement.created").count() == 1
+
+
 def test_staff_cannot_read_audit_logs(client, seed):
     response = client.get("/api/audit-logs", headers=headers_for(seed["staff_a"]))
     assert response.status_code == 403
