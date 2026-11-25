@@ -1,13 +1,16 @@
 # Stock-Wise-
 StockWise is an offline-first inventory management system designed for Rwandan SMEs to track stock, detect discrepancies, improve inventory accuracy, and maintain reliable records for better financial accountability and business decision-making.
 
+## Demo Video: https://youtu.be/CWRCux4a-RM
+## Live Link: https://stock-wise-ten-pi.vercel.app
+
 ## Features
 
 - **Shops and roles.** Registering creates a shop and makes you its `owner`. Owners add `staff` (or other owners) from the Team screen.
-- **Products** with SKU, unit, cost price in RWF and a reorder level. Products at or below their reorder level are flagged "Low stock" on the Products screen.
+- **Products** with SKU, unit, cost price in RWF, and a reorder level. Products at or below their reorder level are flagged "Low stock" on the Products screen.
 - **Stock movements** (purchase, sale, return, damage). Stock is always the sum of the movement ledger, never a number someone typed in.
 - **Blind stock counts.** The expected figure only appears after the count is saved. A count that doesn't match creates a discrepancy.
-- **Discrepancy workflow:** `open` → `investigated` (staff or owner record a cause and a finding) → `resolved` (owner only; stock is corrected to the counted figure).
+- **Discrepancy workflow:** `open` → `investigated` (staff or owner records a cause and a finding) → `resolved` (owner only; stock is corrected to the counted figure).
 - **Offline first.** Movements and stock counts recorded with no connection are queued on the phone and sent when it is back online. Each one carries an id made on the phone, so a replayed request is never saved twice.
 - **Audit log.** Every change (products, movements, counts, investigations, resolutions, new team members) writes an audit row. Owners can read it on the Audit log screen.
 - **Inventory value report** in RWF, and a downloadable **loan-readiness PDF** for lenders.
