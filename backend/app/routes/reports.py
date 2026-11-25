@@ -1,5 +1,9 @@
 """Financial reports for the loan-readiness feature.
 
+GET /api/reports/loan-readiness?from=YYYY-MM-DD&to=YYYY-MM-DD
+    The same valuation plus discrepancy, accuracy and audit summaries, as a
+    PDF the owner can hand to a lender. See app/services/loan_report.py.
+
 GET /api/reports/valuation
     Total inventory value for the logged-in owner's business:
         total value = sum over products of (current stock x unit cost)
@@ -10,18 +14,23 @@ GET /api/reports/valuation
     A lender can trust a ledger total more than a number anyone can overwrite.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from io import BytesIO
 
-from flask import Blueprint, jsonify
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask import Blueprint, jsonify, request, send_file
+from flask_jwt_extended import current_user, jwt_required
 
 from app import db
-from app.models import Product, User
+from app.errors import ValidationError
+from app.models import Business, Product
+from app.services.access import require_owner
+from app.services.loan_report import build_loan_report, render_loan_report_pdf
 from app.services.stock import stock_by_product
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/api/reports")
 
 CURRENCY = "RWF"
+DEFAULT_REPORT_DAYS = 90
 
 
 def build_valuation(business_id):
@@ -81,14 +90,41 @@ def build_valuation(business_id):
 @reports_bp.get("/valuation")
 @jwt_required()
 def valuation():
-    user = db.session.get(User, get_jwt_identity())
-    if user is None:
-        return jsonify(error="user not found"), 401
-
     # Inventory value is financial data for loan applications, so only the
-    # business owner can see it. The role is read from the database rather
-    # than the token, so a demoted user loses access straight away.
-    if user.role != "owner":
-        return jsonify(error="only the business owner can view the valuation report"), 403
+    # business owner can see it.
+    require_owner(current_user, "only the business owner can view the valuation report")
+    return jsonify(build_valuation(current_user.business_id)), 200
 
-    return jsonify(build_valuation(user.business_id)), 200
+
+def _read_date(field, default):
+    raw = request.args.get(field)
+    if raw is None:
+        return default
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        raise ValidationError(field, f"{field} must be a date like 2026-11-30") from None
+
+
+@reports_bp.get("/loan-readiness")
+@jwt_required()
+def loan_readiness():
+    require_owner(current_user, "only the business owner can download the loan-readiness report")
+
+    today = datetime.now(timezone.utc).date()
+    end_date = _read_date("to", today)
+    start_date = _read_date("from", end_date - timedelta(days=DEFAULT_REPORT_DAYS - 1))
+    if start_date > end_date:
+        raise ValidationError("from", "from must be on or before to")
+
+    business = db.session.get(Business, current_user.business_id)
+    report = build_loan_report(
+        business, build_valuation(business.id), start_date, end_date
+    )
+    pdf = render_loan_report_pdf(report, generated_on=today)
+    return send_file(
+        BytesIO(pdf),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"stockwise-loan-readiness-{today.isoformat()}.pdf",
+    )
