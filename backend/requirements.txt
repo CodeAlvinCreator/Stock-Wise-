@@ -9,3 +9,4 @@ psycopg2-binary==2.9.13
 pytest==9.2.0
 ruff==0.17.3
 gunicorn==26.2.0
+reportlab==5.1.1

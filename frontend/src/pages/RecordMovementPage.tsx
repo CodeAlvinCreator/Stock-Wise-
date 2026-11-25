@@ -1,14 +1,15 @@
 ﻿import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api, ApiError } from '../api'
-import type { MovementType } from '../api'
+import { api, ApiError, toFormError } from '../api'
+import type { FormError, MovementType, NewMovement } from '../api'
+import { FieldError, FormAlert } from '../components/FieldError'
 import { Screen } from '../components/Screen'
 import { countOutbox, queueMovement } from '../offline/outbox'
 import { useProducts } from '../useProducts'
 
 // Purchases and returns add stock, sales and damage remove it.
-// This matches MOVEMENT_SIGNS in backend/app/routes/stock_movements.py.
+// This matches MOVEMENT_SIGNS in backend/app/services/stock.py.
 const TYPES: { value: MovementType; label: string; sign: 1 | -1 }[] = [
   { value: 'purchase', label: 'Purchase', sign: 1 },
   { value: 'sale', label: 'Sale', sign: -1 },
@@ -23,7 +24,7 @@ export function RecordMovementPage() {
   const [type, setType] = useState<MovementType>('purchase')
   const [quantity, setQuantity] = useState('')
   const [note, setNote] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<FormError | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [unsynced, setUnsynced] = useState(0)
@@ -63,7 +64,7 @@ export function RecordMovementPage() {
 
     // The id is made here, before sending. If the network drops, the queued
     // copy keeps the same id, so the server can spot a replay.
-    const movement = {
+    const movement: NewMovement = {
       id: crypto.randomUUID(),
       product_id: product.id,
       movement_type: type,
@@ -85,7 +86,7 @@ export function RecordMovementPage() {
         setQuantity('')
         setNote('')
       } else {
-        setError(err instanceof Error ? err.message : 'Could not save the movement')
+        setError(toFormError(err, 'Could not save the movement'))
       }
     } finally {
       setBusy(false)
@@ -140,11 +141,13 @@ export function RecordMovementPage() {
           <label className="field">
             <span>Quantity ({product?.unit || 'units'})</span>
             <input type="number" inputMode="numeric" min={1} step={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
+            <FieldError error={error} field="quantity" />
           </label>
 
           <label className="field">
             <span>Note (optional)</span>
             <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={255} placeholder="Delivery from Nyabugogo wholesaler" />
+            <FieldError error={error} field="note" />
           </label>
 
           {product && after !== null && (
@@ -157,7 +160,7 @@ export function RecordMovementPage() {
             </div>
           )}
 
-          {error && <p className="alert alert--danger">{error}</p>}
+          <FormAlert error={error} fields={['quantity', 'note']} />
           {saved && <p className="alert alert--ok">{saved}</p>}
 
           <button className="btn btn--primary" disabled={busy || !product}>

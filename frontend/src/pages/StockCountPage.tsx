@@ -1,19 +1,19 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api'
-import type { CountResult } from '../api'
+import { api, ApiError } from '../api'
+import type { CountResult, NewCount, ProductWithStock } from '../api'
 import { Screen } from '../components/Screen'
+import { queueCount } from '../offline/outbox'
 import { useProducts } from '../useProducts'
-import type { ProductWithStock } from '../useProducts'
 
 // A blind count: the expected number is hidden until the person has typed
 // what is physically on the shelf, so they can't just copy the record.
 export function StockCountPage() {
   const { products, loading, error } = useProducts()
-  const [results, setResults] = useState<Record<string, CountResult>>({})
+  const [results, setResults] = useState<Record<string, CountOutcome>>({})
 
   const done = Object.keys(results).length
-  const differences = Object.values(results).filter((r) => r.kind !== 'match').length
+  const differences = Object.values(results).filter((r) => r !== 'queued' && r.kind !== 'match').length
   const [today] = useState(() => new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }))
 
   return (
@@ -33,6 +33,9 @@ export function StockCountPage() {
 
       {error && <p className="alert alert--danger">{error}</p>}
       {loading && <p className="muted">Loading products…</p>}
+      {!loading && !error && products.length === 0 && (
+        <p className="muted">No products to count yet. Add them on the Products tab.</p>
+      )}
 
       {products.map((p) => (
         <CountRow
@@ -46,14 +49,17 @@ export function StockCountPage() {
   )
 }
 
+// 'queued' means it was saved on the phone and will be sent when back online.
+type CountOutcome = CountResult | 'queued'
+
 function CountRow({
   product,
   result,
   onSaved,
 }: {
   product: ProductWithStock
-  result: CountResult | undefined
-  onSaved: (result: CountResult) => void
+  result: CountOutcome | undefined
+  onSaved: (result: CountOutcome) => void
 }) {
   const [value, setValue] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -67,10 +73,17 @@ function CountRow({
     }
     setBusy(true)
     setError(null)
+    // The id is made here, so a count queued offline is never saved twice.
+    const count: NewCount = { id: crypto.randomUUID(), product_id: product.id, counted_quantity: counted }
     try {
-      onSaved(await api.submitCount(product.id, counted))
+      onSaved(await api.submitCount(count))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the count')
+      if (err instanceof ApiError && err.status === 0) {
+        await queueCount(count)
+        onSaved('queued')
+      } else {
+        setError(err instanceof Error ? err.message : 'Could not save the count')
+      }
     } finally {
       setBusy(false)
     }
@@ -78,7 +91,7 @@ function CountRow({
 
   const unit = product.unit || 'units'
   let status = null
-  if (result) {
+  if (result && result !== 'queued') {
     const diff = result.discrepancy?.difference ?? 0
     status =
       result.kind === 'match' ? (
@@ -94,7 +107,9 @@ function CountRow({
     <div className="row">
       <div className="row__info">
         <strong>{product.name}</strong>
-        {result ? (
+        {result === 'queued' ? (
+          <span className="muted small">Saved offline. It will sync when you are back online.</span>
+        ) : result ? (
           <>
             <span className="muted small">
               Expected: {result.count.expected_quantity} {unit}
@@ -112,7 +127,7 @@ function CountRow({
         {error && <span className="small text-danger">{error}</span>}
       </div>
       {result ? (
-        <span className="count-box">{result.count.counted_quantity}</span>
+        <span className="count-box">{result === 'queued' ? value : result.count.counted_quantity}</span>
       ) : (
         <div className="count-entry">
           <input

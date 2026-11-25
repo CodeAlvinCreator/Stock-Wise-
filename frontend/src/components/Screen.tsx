@@ -1,10 +1,29 @@
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../auth/context'
+import type { FailedItem } from '../offline/outbox'
+
+// Explains which offline items the server refused when they were finally sent.
+function useOutboxFailures() {
+  const [failures, setFailures] = useState<FailedItem[]>([])
+
+  useEffect(() => {
+    const onFailed = (event: Event) => {
+      const failed = (event as CustomEvent<FailedItem[]>).detail
+      setFailures((previous) => [...previous, ...failed])
+    }
+    window.addEventListener('outbox-failed', onFailed)
+    return () => window.removeEventListener('outbox-failed', onFailed)
+  }, [])
+
+  return { failures, dismiss: () => setFailures([]) }
+}
 
 // Every logged-in page uses this: green app bar on top, content, tab bar at the bottom.
 export function Screen({ title, children }: { title: string; children: ReactNode }) {
   const { session, logout } = useAuth()
+  const { failures, dismiss } = useOutboxFailures()
 
   return (
     <div className="screen">
@@ -18,7 +37,27 @@ export function Screen({ title, children }: { title: string; children: ReactNode
         </button>
       </header>
 
-      <main className="content">{children}</main>
+      <main className="content">
+        {failures.length > 0 && (
+          <div className="alert alert--danger" role="alert">
+            <p>
+              {failures.length} item{failures.length === 1 ? '' : 's'} saved offline could not be synced and{' '}
+              {failures.length === 1 ? 'was' : 'were'} not saved:
+            </p>
+            <ul>
+              {failures.map((f) => (
+                <li key={f.item.id}>
+                  {f.item.kind === 'count' ? 'Stock count' : 'Movement'}: {f.message}
+                </li>
+              ))}
+            </ul>
+            <button type="button" className="btn btn--small" onClick={dismiss}>
+              OK
+            </button>
+          </div>
+        )}
+        {children}
+      </main>
 
       <nav className="bottom-nav" aria-label="Main">
         <Tab to="/products" label="Products" icon={<BoxIcon />} />

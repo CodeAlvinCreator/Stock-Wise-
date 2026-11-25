@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
+import { toFormError } from '../api'
+import type { FormError } from '../api'
 import { useAuth } from '../auth/context'
+import { FieldError, FormAlert } from '../components/FieldError'
+
+const FORM_FIELDS = ['name', 'business_name', 'email', 'password']
 
 // One page for both logging in and registering a new shop.
 // Registering creates the business and makes this person its owner.
@@ -12,7 +17,7 @@ export function LoginPage() {
   const [businessName, setBusinessName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<FormError | null>(null)
   const [busy, setBusy] = useState(false)
 
   if (session) return <Navigate to="/products" replace />
@@ -25,7 +30,7 @@ export function LoginPage() {
       if (mode === 'login') await login(email.trim(), password)
       else await register(name.trim(), email.trim(), password, businessName.trim())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
+      setError(toFormError(err, 'Something went wrong'))
     } finally {
       setBusy(false)
     }
@@ -50,16 +55,19 @@ export function LoginPage() {
             <label className="field">
               <span>Your name</span>
               <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
+              <FieldError error={error} field="name" />
             </label>
             <label className="field">
               <span>Shop name</span>
               <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} required placeholder="Kimironko Mini Market" />
+              <FieldError error={error} field="business_name" />
             </label>
           </>
         )}
         <label className="field">
           <span>Email</span>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+          <FieldError error={error} field="email" />
         </label>
         <label className="field">
           <span>Password</span>
@@ -71,9 +79,10 @@ export function LoginPage() {
             minLength={isRegister ? 8 : undefined}
             autoComplete={isRegister ? 'new-password' : 'current-password'}
           />
+          <FieldError error={error} field="password" />
         </label>
 
-        {error && <p className="alert alert--danger" role="alert">{error}</p>}
+        <FormAlert error={error} fields={FORM_FIELDS} />
 
         <button className="btn btn--primary" disabled={busy}>
           {busy ? 'Please wait…' : isRegister ? 'Create my shop' : 'Log in'}

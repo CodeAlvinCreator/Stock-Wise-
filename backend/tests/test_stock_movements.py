@@ -4,7 +4,7 @@ import pytest
 from flask_jwt_extended import create_access_token
 
 from app import db
-from app.models import Business, Product, StockMovement, User
+from app.models import AuditLog, Business, Product, StockMovement, User
 
 
 @pytest.fixture
@@ -133,3 +133,39 @@ def test_client_id_used_by_another_business_returns_409(client, setup):
     db.session.commit()
     r = post(client, setup, "purchase", 5, id=taken)
     assert r.status_code == 409
+
+
+def test_movement_writes_one_audit_row(client, setup):
+    r = post(client, setup, "sale", 2)
+    rows = AuditLog.query.filter_by(action="movement.created").all()
+    assert len(rows) == 1
+    assert rows[0].entity_id == r.get_json()["id"]
+
+
+def test_replayed_offline_movement_is_audited_once(client, setup):
+    movement_id = str(uuid.uuid4())
+    post(client, setup, "purchase", 20, id=movement_id)
+    replay = post(client, setup, "purchase", 20, id=movement_id)
+
+    assert replay.status_code == 200
+    rows = AuditLog.query.filter_by(action="movement.created").all()
+    assert [row.entity_id for row in rows] == [movement_id]
+
+
+def test_rejected_movement_is_not_audited(client, setup):
+    post(client, setup, "purchase", -1)
+    assert AuditLog.query.count() == 0
+
+
+@pytest.mark.parametrize("note", ["x" * 256, 42])
+def test_rejects_bad_note(client, setup, note):
+    r = post(client, setup, "purchase", 1, note=note)
+    assert r.status_code == 400
+    assert r.get_json()["field"] == "note"
+
+
+def test_missing_product_id_returns_400(client, setup):
+    r = client.post("/api/movements", json={"movement_type": "purchase", "quantity": 1},
+                    headers=setup["headers"])
+    assert r.status_code == 400
+    assert r.get_json()["field"] == "product_id"

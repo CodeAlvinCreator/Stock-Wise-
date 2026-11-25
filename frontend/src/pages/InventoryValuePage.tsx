@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react'
-import { api, ApiError, formatRwf } from '../api'
-import type { Valuation } from '../api'
+import type { FormEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { api, ApiError, formatRwf, toFormError } from '../api'
+import type { FormError, Valuation } from '../api'
+import { FieldError, FormAlert } from '../components/FieldError'
 import { Screen } from '../components/Screen'
+
+// YYYY-MM-DD for a day `days` before today
+function isoDate(days = 0): string {
+  const date = new Date()
+  date.setDate(date.getDate() - days)
+  // en-CA formats as YYYY-MM-DD in the phone's own time zone
+  return date.toLocaleDateString('en-CA')
+}
 
 export function InventoryValuePage() {
   const [data, setData] = useState<Valuation | null>(null)
@@ -76,11 +87,70 @@ export function InventoryValuePage() {
             </p>
           )}
 
-          <button className="btn btn--secondary" onClick={() => window.print()}>
-            Print or save as PDF
-          </button>
+          <LoanReportDownload />
+
+          <div className="card stack">
+            <h2 className="card__title">Owner tools</h2>
+            <Link className="btn btn--secondary" to="/team">
+              Team
+            </Link>
+            <Link className="btn btn--secondary" to="/audit">
+              Audit log
+            </Link>
+          </div>
         </>
       )}
     </Screen>
+  )
+}
+
+// The PDF a lender gets: stock value, discrepancies, count accuracy and the audit trail.
+function LoanReportDownload() {
+  const [from, setFrom] = useState(() => isoDate(89))
+  const [to, setTo] = useState(() => isoDate())
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<FormError | null>(null)
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      const pdf = await api.downloadLoanReport(from, to)
+      const url = URL.createObjectURL(pdf)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `stockwise-loan-readiness-${to}.pdf`
+      link.click()
+      // Give the browser a moment to start the download before freeing the file
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err) {
+      setError(toFormError(err, 'Could not create the report'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="card stack" onSubmit={handleSubmit}>
+      <h2 className="card__title">Loan-readiness report</h2>
+      <span className="muted small">Discrepancies, count accuracy and activity are summarised for these dates.</span>
+      <div className="two-col">
+        <label className="field">
+          <span>From</span>
+          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} required />
+          <FieldError error={error} field="from" />
+        </label>
+        <label className="field">
+          <span>To</span>
+          <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} required />
+          <FieldError error={error} field="to" />
+        </label>
+      </div>
+      <FormAlert error={error} fields={['from', 'to']} />
+      <button className="btn btn--primary" disabled={busy}>
+        {busy ? 'Preparing PDF…' : 'Download loan-readiness report'}
+      </button>
+    </form>
   )
 }

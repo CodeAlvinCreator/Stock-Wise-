@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, causeLabel, formatDifference, formatRwf } from '../api'
+import { api, causeLabel, formatDifference, formatRwf, parseServerDate } from '../api'
 import type { Discrepancy, DiscrepancyStatus } from '../api'
 import { useAuth } from '../auth/context'
 import { Screen } from '../components/Screen'
@@ -11,6 +11,12 @@ const TABS: { value: DiscrepancyStatus; label: string }[] = [
   { value: 'investigated', label: 'Investigated' },
   { value: 'resolved', label: 'Resolved' },
 ]
+
+const EMPTY_TEXT: Record<DiscrepancyStatus, string> = {
+  open: 'No open discrepancies. Every count matched or has been investigated.',
+  investigated: 'Nothing is waiting for the owner to resolve.',
+  resolved: 'No resolved discrepancies yet.',
+}
 
 export function DiscrepanciesPage() {
   const [tab, setTab] = useState<DiscrepancyStatus>('open')
@@ -49,7 +55,10 @@ function DiscrepancyList({ status }: { status: DiscrepancyStatus }) {
   return (
     <>
       {message && <p className="alert alert--ok">{message}</p>}
-      {discrepancies.length === 0 && <p className="muted">Nothing here.</p>}
+      {discrepancies.length === 0 && <p className="muted">{EMPTY_TEXT[status]}</p>}
+      {status === 'investigated' && discrepancies.length > 0 && !isOwner && (
+        <p className="muted small">The owner resolves these, which corrects the stock to the counted figure.</p>
+      )}
       {status === 'open' && discrepancies.length > 0 && (
         <Link className="btn btn--secondary" to="/investigate">
           Investigate open discrepancies
@@ -59,9 +68,9 @@ function DiscrepancyList({ status }: { status: DiscrepancyStatus }) {
         <DiscrepancyRow
           key={d.id}
           discrepancy={d}
-          canApprove={isOwner && d.status === 'investigated'}
-          onApproved={(stockAfter) => {
-            setMessage(`Approved. ${d.product_name} stock is now ${stockAfter}.`)
+          canResolve={isOwner && d.status === 'investigated'}
+          onResolved={(stockAfter) => {
+            setMessage(`Resolved. ${d.product_name} stock is now ${stockAfter}.`)
             reload()
           }}
         />
@@ -72,24 +81,29 @@ function DiscrepancyList({ status }: { status: DiscrepancyStatus }) {
 
 function DiscrepancyRow({
   discrepancy: d,
-  canApprove,
-  onApproved,
+  canResolve,
+  onResolved,
 }: {
   discrepancy: Discrepancy
-  canApprove: boolean
-  onApproved: (stockAfter: number) => void
+  canResolve: boolean
+  onResolved: (stockAfter: number) => void
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function approve() {
+  // Resolving moves stock to the counted figure, so ask before doing it.
+  async function resolve() {
+    const verb = d.difference < 0 ? 'remove' : 'add'
+    if (!window.confirm(`Resolve this and ${verb} ${Math.abs(d.difference)} ${d.product_name} so stock matches the count?`)) {
+      return
+    }
     setBusy(true)
     setError(null)
     try {
-      const result = await api.approveDiscrepancy(d.id)
-      onApproved(result.stock_after)
+      const result = await api.resolveDiscrepancy(d.id)
+      onResolved(result.stock_after)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not approve')
+      setError(err instanceof Error ? err.message : 'Could not resolve')
       setBusy(false)
     }
   }
@@ -100,15 +114,15 @@ function DiscrepancyRow({
         <strong>{d.product_name}</strong>
         {d.cause && <span className="small">Cause: {causeLabel(d.cause)}</span>}
         {d.finding && <span className="muted small">{d.finding}</span>}
-        <span className="muted small">{new Date(d.created_at).toLocaleDateString('en-GB')}</span>
+        <span className="muted small">{parseServerDate(d.created_at).toLocaleDateString('en-GB')}</span>
         {error && <span className="small text-danger">{error}</span>}
       </div>
       <div className="row__stock">
         <strong className={d.difference < 0 ? 'text-danger' : 'text-warn'}>{formatDifference(d.difference)}</strong>
         <span className="small">{formatRwf(d.value_rwf)}</span>
-        {canApprove && (
-          <button type="button" className="btn btn--small" onClick={approve} disabled={busy}>
-            {busy ? '…' : 'Approve'}
+        {canResolve && (
+          <button type="button" className="btn btn--small" onClick={resolve} disabled={busy}>
+            {busy ? '…' : 'Resolve'}
           </button>
         )}
       </div>

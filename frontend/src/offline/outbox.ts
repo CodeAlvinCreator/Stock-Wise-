@@ -1,6 +1,7 @@
 ﻿import { api, ApiError } from '../api'
+import type { NewCount, NewMovement } from '../api'
 import { db } from './db'
-import type { OutboxItem, QueuedMovement } from './db'
+import type { OutboxItem } from './db'
 
 export interface FailedItem {
   item: OutboxItem
@@ -12,9 +13,24 @@ function announceChange() {
   window.dispatchEvent(new Event('outbox-changed'))
 }
 
-export async function queueMovement(body: QueuedMovement): Promise<void> {
-  await db.outbox.add({ id: body.id, body, createdAt: Date.now() })
+// Tells open screens that the server refused some queued items, so the
+// user sees it instead of the data silently disappearing.
+function announceFailures(failed: FailedItem[]) {
+  if (failed.length > 0) window.dispatchEvent(new CustomEvent<FailedItem[]>('outbox-failed', { detail: failed }))
+}
+
+export async function queueMovement(body: NewMovement): Promise<void> {
+  await db.outbox.add({ id: body.id, kind: 'movement', body, createdAt: Date.now() })
   announceChange()
+}
+
+export async function queueCount(body: NewCount): Promise<void> {
+  await db.outbox.add({ id: body.id, kind: 'count', body, createdAt: Date.now() })
+  announceChange()
+}
+
+function sendItem(item: OutboxItem): Promise<unknown> {
+  return item.kind === 'count' ? api.submitCount(item.body) : api.recordMovement(item.body)
 }
 
 export function countOutbox(): Promise<number> {
@@ -27,7 +43,7 @@ async function sendQueued(): Promise<FailedItem[]> {
 
   for (const item of items) {
     try {
-      await api.recordMovement(item.body)
+      await sendItem(item)
       await db.outbox.delete(item.id)
     } catch (err) {
       const status = err instanceof ApiError ? err.status : 0
@@ -45,6 +61,7 @@ async function sendQueued(): Promise<FailedItem[]> {
   }
 
   announceChange()
+  announceFailures(failed)
   return failed
 }
 

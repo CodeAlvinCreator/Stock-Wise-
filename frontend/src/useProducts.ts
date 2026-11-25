@@ -1,28 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, ApiError } from './api'
-import type { Product } from './api'
+import { api } from './api'
+import type { ProductWithStock } from './api'
 import { useAuth } from './auth/context'
 
-export interface ProductWithStock extends Product {
-  stock: number
-}
-
-// Fetches the shop's products plus each product's current stock.
-// Stock is calculated by the backend from the movement history
-// (GET /api/products/<id>/stock), not from quantity_on_hand.
-async function fetchProducts(businessId: string): Promise<ProductWithStock[]> {
-  const all = await api.listProducts()
-  // The products endpoint currently returns every shop's products,
-  // so keep only this shop's (see the note in the frontend README).
-  const mine = all.filter((p) => p.business_id === businessId)
-  const stocks = await Promise.all(mine.map((p) => api.getStock(p.id)))
-  return mine
-    .map((p, i) => ({ ...p, stock: stocks[i].stock }))
-    .sort((a, b) => a.name.localeCompare(b.name))
-}
-
+// Loads the shop's products, sorted by name. The backend only returns this
+// shop's products and works out each one's stock from the movement history.
 export function useProducts() {
-  const { session, logout } = useAuth()
+  const { session } = useAuth()
   const [products, setProducts] = useState<ProductWithStock[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,7 +16,8 @@ export function useProducts() {
   useEffect(() => {
     if (!session) return
     let cancelled = false
-    fetchProducts(session.businessId)
+    api
+      .listProducts()
       .then((list) => {
         if (cancelled) return
         setProducts(list)
@@ -40,7 +25,6 @@ export function useProducts() {
       })
       .catch((err) => {
         if (cancelled) return
-        if (err instanceof ApiError && err.status === 401) logout()
         setError(err instanceof Error ? err.message : 'Could not load products')
       })
       .finally(() => {
@@ -49,7 +33,7 @@ export function useProducts() {
     return () => {
       cancelled = true
     }
-  }, [session, logout, version])
+  }, [session, version])
 
   const reload = useCallback(() => {
     setLoading(true)

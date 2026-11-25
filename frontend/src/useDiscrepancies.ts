@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, ApiError } from './api'
+import { api } from './api'
 import type { Discrepancy, DiscrepancyStatus } from './api'
 import { useAuth } from './auth/context'
 
 // Loads the shop's discrepancies with one status (newest first, sorted by the backend).
 export function useDiscrepancies(status: DiscrepancyStatus) {
-  const { session, logout } = useAuth()
+  const { session } = useAuth()
   const [discrepancies, setDiscrepancies] = useState<Discrepancy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -24,7 +24,6 @@ export function useDiscrepancies(status: DiscrepancyStatus) {
       })
       .catch((err) => {
         if (cancelled) return
-        if (err instanceof ApiError && err.status === 401) logout()
         setError(err instanceof Error ? err.message : 'Could not load discrepancies')
       })
       .finally(() => {
@@ -33,7 +32,7 @@ export function useDiscrepancies(status: DiscrepancyStatus) {
     return () => {
       cancelled = true
     }
-  }, [session, logout, status, version])
+  }, [session, status, version])
 
   const reload = useCallback(() => {
     setLoading(true)
