@@ -137,3 +137,16 @@ def test_log_action_does_not_commit_on_its_own(app, seed):
     log_action(seed["owner_a"], "product.created", "product", "never-saved")
     db.session.rollback()
     assert AuditLog.query.count() == 0
+
+
+def test_audit_rows_include_who_did_it(client, seed):
+    log_action(seed["staff_a"], "count.created", "count", "c-1")
+    db.session.commit()
+
+    rows = client.get("/api/audit-logs", headers=headers_for(seed["owner_a"])).get_json()
+
+    assert rows["audit_logs"][0]["user_name"] == "staff-a"
+
+
+def test_audit_logs_require_token(client, seed):
+    assert client.get("/api/audit-logs").status_code == 401
