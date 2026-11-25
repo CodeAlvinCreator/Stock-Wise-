@@ -6,12 +6,34 @@ const TOKEN_KEY = 'stockwise_token'
 
 export class ApiError extends Error {
   status: number
+  // The request field the backend blamed, so a form can show the message next to it
+  field: string | null
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, field: string | null = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.field = field
   }
+}
+
+// The message to show for any error, with the field it belongs to (if any).
+export interface FormError {
+  message: string
+  field: string | null
+}
+
+export function toFormError(err: unknown, fallback: string): FormError {
+  if (err instanceof ApiError) return { message: err.message, field: err.field }
+  return { message: err instanceof Error ? err.message : fallback, field: null }
+}
+
+// AuthProvider registers its logout here, so an expired or revoked login on
+// any request sends the user back to the login page.
+let handleUnauthorized: () => void = () => {}
+
+export function onUnauthorized(handler: () => void): void {
+  handleUnauthorized = handler
 }
 
 export function getToken(): string | null {
@@ -23,9 +45,12 @@ export function setToken(token: string | null): void {
   else localStorage.removeItem(TOKEN_KEY)
 }
 
-// Sends one request, attaches the login token, and turns error responses
-// into an ApiError carrying the message the backend sent back.
-async function request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+// Every request goes through here. It attaches the login token and turns
+// every kind of failure into an ApiError:
+//   status 0   no network or server unreachable (offline screens queue on this)
+//   401        login missing or expired: the user is logged out
+//   otherwise  the {error, field} message the backend sent back
+async function send(path: string, options: { method?: string; body?: unknown } = {}): Promise<Response> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -41,13 +66,23 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
     throw new ApiError(0, 'Cannot reach the server. Check your connection and try again.')
   }
 
+  if (response.ok) return response
+
   const data = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    // flask-jwt-extended sends {msg}, our own routes send {error}
-    const message = data.error ?? data.msg ?? `Request failed (${response.status})`
-    throw new ApiError(response.status, message)
-  }
-  return data as T
+  // Only log out when a token was sent. A 401 from the login form just means a wrong password.
+  if (response.status === 401 && token) handleUnauthorized()
+  const message =
+    data.error ?? (response.status >= 500 ? 'The server had a problem. Please try again.' : `Request failed (${response.status})`)
+  throw new ApiError(response.status, message, data.field ?? null)
+}
+
+async function request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+  const response = await send(path, options)
+  return (await response.json()) as T
+}
+
+async function download(path: string): Promise<Blob> {
+  return (await send(path)).blob()
 }
 
 // ---------- Types that mirror the backend's JSON ----------
@@ -63,6 +98,11 @@ export interface Product {
   quantity_on_hand: number
   reorder_level: number
   unit_cost: number
+}
+
+// GET /api/products adds each product's current stock, worked out from the movement ledger
+export interface ProductWithStock extends Product {
+  stock: number
 }
 
 export type MovementType = 'purchase' | 'sale' | 'return' | 'damage'
@@ -140,10 +180,43 @@ export interface Discrepancy {
   resolved_at: string | null
 }
 
-export interface ApproveResult {
+export interface ResolveResult {
   discrepancy: Discrepancy
   movement_id: string
   stock_after: number
+}
+
+export interface AuditEntry {
+  id: string
+  action: string
+  entity_type: string | null
+  entity_id: string | null
+  user_id: string | null
+  user_name: string | null
+  details: unknown
+  created_at: string
+}
+
+export interface TeamMember {
+  id: string
+  name: string
+  email: string
+  role: Role
+  business_id: string
+}
+
+export interface NewCount {
+  id: string
+  product_id: string
+  counted_quantity: number
+}
+
+export interface NewMovement {
+  id: string
+  product_id: string
+  movement_type: MovementType
+  quantity: number
+  note?: string
 }
 
 // ---------- Endpoints ----------
@@ -158,27 +231,29 @@ export const api = {
       body: { name, email, password, business_name },
     }),
 
-  listProducts: () => request<Product[]>('/api/products'),
+  // Owner only. Uses the same register endpoint, with the owner's token and business_id.
+  addTeamMember: (member: { name: string; email: string; password: string; role: Role; business_id: string }) =>
+    request<{ id: string; email: string; role: Role; business_id: string }>('/api/auth/register', {
+      method: 'POST',
+      body: member,
+    }),
 
-  createProduct: (product: {
-    business_id: string
-    name: string
-    sku?: string
-    unit?: string
-    unit_cost: number
-    reorder_level: number
-  }) => request<Product>('/api/products', { method: 'POST', body: product }),
+  listTeam: () => request<{ users: TeamMember[] }>('/api/auth/team'),
 
-  getStock: (productId: string) =>
-    request<{ product_id: string; name: string; stock: number }>(`/api/products/${productId}/stock`),
+  listProducts: () => request<ProductWithStock[]>('/api/products'),
 
-  recordMovement: (movement: { id?: string; product_id: string; movement_type: MovementType; quantity: number; note?: string }) =>
-    request<Movement>('/api/movements', { method: 'POST', body: movement }),
+  createProduct: (product: { name: string; sku?: string; unit?: string; unit_cost: number; reorder_level: number }) =>
+    request<Product>('/api/products', { method: 'POST', body: product }),
 
-  submitCount: (product_id: string, counted_quantity: number) =>
-    request<CountResult>('/api/counts', { method: 'POST', body: { product_id, counted_quantity } }),
+  recordMovement: (movement: NewMovement) => request<Movement>('/api/movements', { method: 'POST', body: movement }),
+
+  submitCount: (count: NewCount) => request<CountResult>('/api/counts', { method: 'POST', body: count }),
 
   getValuation: () => request<Valuation>('/api/reports/valuation'),
+
+  // Owner only. from and to are YYYY-MM-DD, both included.
+  downloadLoanReport: (from: string, to: string) =>
+    download(`/api/reports/loan-readiness?${new URLSearchParams({ from, to })}`),
 
   listDiscrepancies: (status?: DiscrepancyStatus) =>
     request<{ discrepancies: Discrepancy[] }>(`/api/discrepancies${status ? `?status=${status}` : ''}`),
@@ -187,13 +262,21 @@ export const api = {
     request<Discrepancy>(`/api/discrepancies/${id}/investigate`, { method: 'POST', body: { cause, finding } }),
 
   // Owner only. The backend adds a correcting movement so stock matches the count.
-  approveDiscrepancy: (id: string) =>
-    request<ApproveResult>(`/api/discrepancies/${id}/approve`, { method: 'POST' }),
+  resolveDiscrepancy: (id: string) =>
+    request<ResolveResult>(`/api/discrepancies/${id}/resolve`, { method: 'POST' }),
+
+  listAuditLogs: (limit = 100) => request<{ audit_logs: AuditEntry[] }>(`/api/audit-logs?limit=${limit}`),
 }
 
 // Formats whole Rwandan francs, for example 117500 -> "117,500 RWF"
 export function formatRwf(amount: number): string {
   return `${amount.toLocaleString('en-US')} RWF`
+}
+
+// The backend stores UTC times without a zone marker. Without the Z the
+// browser would read them as local time and show them two hours off in Kigali.
+export function parseServerDate(value: string): Date {
+  return new Date(/(Z|[+-]\d\d:\d\d)$/.test(value) ? value : `${value}Z`)
 }
 
 // Signed difference for display: +3 for a surplus, −2 for a shortage

@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { api, getToken, setToken } from '../api'
+import { api, getToken, onUnauthorized, setToken } from '../api'
 import type { Role } from '../api'
+import { flushOutbox } from '../offline/outbox'
 import { AuthContext } from './context'
 import type { Session } from './context'
 
@@ -42,6 +43,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(access_token)
     localStorage.setItem(EMAIL_KEY, email)
     setSession(sessionFromToken(access_token, email))
+    // Anything queued while the old login had expired can be sent now.
+    void flushOutbox()
   }, [])
 
   const register = useCallback(
@@ -57,6 +60,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(EMAIL_KEY)
     setSession(null)
   }, [])
+
+  // Any request that comes back 401 logs the user out. With no session,
+  // RequireLogin then redirects to the login page.
+  useEffect(() => onUnauthorized(logout), [logout])
 
   const value = useMemo(() => ({ session, login, register, logout }), [session, login, register, logout])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

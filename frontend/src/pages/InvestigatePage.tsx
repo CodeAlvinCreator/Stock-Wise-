@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api, CAUSE_OPTIONS, formatDifference, formatRwf } from '../api'
-import type { Cause } from '../api'
+import { api, CAUSE_OPTIONS, formatDifference, formatRwf, parseServerDate, toFormError } from '../api'
+import type { Cause, FormError } from '../api'
+import { FieldError, FormAlert } from '../components/FieldError'
 import { Screen } from '../components/Screen'
 import { useDiscrepancies } from '../useDiscrepancies'
 
 const MAX_FINDING = 1000
 
-// Staff explain why a count did not match the records. The owner approves it
+// Staff explain why a count did not match the records. The owner resolves it
 // afterwards on the Discrepancies page. Opening /investigate?id=<discrepancy id>
 // preselects that discrepancy (the stock count page links here like that).
 export function InvestigatePage() {
@@ -18,7 +19,7 @@ export function InvestigatePage() {
   const [cause, setCause] = useState<Cause>(CAUSE_OPTIONS[0].value)
   const [finding, setFinding] = useState('')
   const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<FormError | null>(null)
   const [savedName, setSavedName] = useState<string | null>(null)
 
   // Falls back to the first one if the id is missing or already investigated
@@ -29,7 +30,7 @@ export function InvestigatePage() {
     if (!current) return
     const text = finding.trim()
     if (text.length === 0 || text.length > MAX_FINDING) {
-      setSaveError(`Describe what you found (1 to ${MAX_FINDING} characters)`)
+      setSaveError({ message: `Describe what you found (1 to ${MAX_FINDING} characters)`, field: 'finding' })
       return
     }
     setSaving(true)
@@ -41,7 +42,7 @@ export function InvestigatePage() {
       setCause(CAUSE_OPTIONS[0].value)
       reload()
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not save the investigation')
+      setSaveError(toFormError(err, 'Could not save the investigation'))
     } finally {
       setSaving(false)
     }
@@ -51,7 +52,7 @@ export function InvestigatePage() {
     <Screen title="Investigate">
       {savedName && (
         <p className="alert alert--ok">
-          Saved. {savedName} is waiting for the owner's approval. <Link to="/discrepancies">View discrepancies</Link>
+          Saved. {savedName} is waiting for the owner to resolve it. <Link to="/discrepancies">View discrepancies</Link>
         </p>
       )}
       {error && <p className="alert alert--danger">{error}</p>}
@@ -80,7 +81,7 @@ export function InvestigatePage() {
             <strong>{current.product_name}</strong>
             <span className="small">
               {current.difference < 0 ? 'Shortage' : 'Surplus'} found on{' '}
-              {new Date(current.created_at).toLocaleDateString('en-GB')}
+              {parseServerDate(current.created_at).toLocaleDateString('en-GB')}
             </span>
             <span className="big">
               {formatDifference(current.difference)} units
@@ -104,6 +105,7 @@ export function InvestigatePage() {
                 </button>
               ))}
             </div>
+            <FieldError error={saveError} field="cause" />
           </div>
 
           <label className="field">
@@ -115,11 +117,12 @@ export function InvestigatePage() {
               onChange={(e) => setFinding(e.target.value)}
               placeholder="e.g. Sold 2 bags on credit on Saturday"
             />
+            <FieldError error={saveError} field="finding" />
           </label>
 
-          {saveError && <p className="alert alert--danger">{saveError}</p>}
+          <FormAlert error={saveError} fields={['cause', 'finding']} />
           <button className="btn btn--primary" disabled={saving}>
-            {saving ? 'Saving…' : 'Send to owner for approval'}
+            {saving ? 'Saving…' : 'Send to owner to resolve'}
           </button>
         </form>
       )}
