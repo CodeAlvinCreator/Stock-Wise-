@@ -3,6 +3,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from app import db
 from app.models import Discrepancy, Product, StockCount, User
+from app.services.stock import current_stock
 from app.services.audit import log_action
 from app.services.variance import calculate_variance
 
@@ -29,7 +30,8 @@ def create_count():
     if product is None or product.business_id != user.business_id:
         return jsonify({"error": "product not found"}), 404
 
-    expected = product.quantity_on_hand
+    # Expected stock comes from the movement ledger, never quantity_on_hand.
+    expected = current_stock(product.id)
     result = calculate_variance(expected, counted)
 
     count = StockCount(
