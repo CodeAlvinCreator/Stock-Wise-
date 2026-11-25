@@ -19,9 +19,10 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    CORS(app)
+    CORS(app, origins=app.config["CORS_ORIGINS"])
 
     from app import models  # noqa: F401
+    from app.errors import register_error_handlers
     from app.routes.audit import audit_bp
     from app.routes.stock_counts import stock_counts_bp
     from app.routes.auth import auth_bp
@@ -37,6 +38,7 @@ def create_app(config_class=Config):
     app.register_blueprint(products_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(stock_movements_bp)
+    register_error_handlers(app)
 
     @app.get("/api/health")
     def health():

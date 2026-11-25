@@ -26,6 +26,8 @@ services:
           property: connectionString
       - key: JWT_SECRET_KEY
         generateValue: true      # Render creates a random 256-bit secret once
+      - key: CORS_ORIGINS
+        sync: false              # set in the dashboard to the Vercel URL, e.g. https://stockwise.vercel.app
 
 databases:
   - name: stockwise-db
