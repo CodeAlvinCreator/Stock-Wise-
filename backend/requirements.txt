@@ -6,6 +6,7 @@ flask-cors==6.0.5
 bcrypt==5.0.0
 python-dotenv==1.2.4
 psycopg2-binary==2.9.13
+psycopg[binary]==3.3.9
 pytest==9.2.0
 ruff==0.17.3
 gunicorn==26.2.0
