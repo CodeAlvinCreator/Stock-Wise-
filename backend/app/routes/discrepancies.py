@@ -1,8 +1,14 @@
-from flask import Blueprint, jsonify, request
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask import Blueprint, abort, jsonify, request
+from flask_jwt_extended import current_user, jwt_required
+from sqlalchemy import update
 
 from app import db
-from app.models import Discrepancy, Product, User, utcnow
+from app.errors import ValidationError
+from app.models import Discrepancy, Product, StockMovement, utcnow
+from app.services.access import require_owner
+from app.services.audit import log_action
+from app.services.stock import current_stock
+from app.services.validation import json_body, read_string
 
 discrepancies_bp = Blueprint("discrepancies", __name__, url_prefix="/api/discrepancies")
 
@@ -41,31 +47,52 @@ def serialize_discrepancy(discrepancy, product):
     }
 
 
-def _current_user():
-    return db.session.get(User, get_jwt_identity())
-
-
-def _business_discrepancies(user):
-    """Discrepancies joined to their product, limited to the user's business."""
+def _business_discrepancies(business_id):
+    """Discrepancies joined to their product, limited to one business."""
     return (
         db.session.query(Discrepancy, Product)
         .join(Product, Discrepancy.product_id == Product.id)
-        .filter(Product.business_id == user.business_id)
+        .filter(Product.business_id == business_id)
     )
+
+
+def _get_business_discrepancy(discrepancy_id):
+    row = (
+        _business_discrepancies(current_user.business_id)
+        .filter(Discrepancy.id == discrepancy_id)
+        .first()
+    )
+    if row is None:
+        abort(404, description="discrepancy not found")
+    return row
+
+
+def _move_status(discrepancy, from_status, **changes):
+    """Change the status only if it is still `from_status`.
+
+    The WHERE on status makes this safe when two people press the button at
+    the same moment: only one UPDATE matches, the other gets a 409 instead of
+    applying the stock correction a second time.
+    """
+    result = db.session.execute(
+        update(Discrepancy)
+        .where(Discrepancy.id == discrepancy.id, Discrepancy.status == from_status)
+        .values(**changes)
+    )
+    if result.rowcount != 1:
+        db.session.rollback()
+        abort(409, description=f"discrepancy is not {from_status}")
+    db.session.refresh(discrepancy)
 
 
 @discrepancies_bp.route("", methods=["GET"])
 @jwt_required()
 def list_discrepancies():
-    user = _current_user()
-    if user is None:
-        return jsonify({"error": "user not found"}), 401
-
     status = request.args.get("status")
     if status is not None and status not in STATUSES:
-        return jsonify({"error": f"status must be one of: {', '.join(STATUSES)}"}), 400
+        abort(400, description=f"status must be one of: {', '.join(STATUSES)}")
 
-    query = _business_discrepancies(user)
+    query = _business_discrepancies(current_user.business_id)
     if status is not None:
         query = query.filter(Discrepancy.status == status)
     rows = query.order_by(Discrepancy.created_at.desc()).all()
@@ -76,32 +103,85 @@ def list_discrepancies():
 @discrepancies_bp.route("/<discrepancy_id>/investigate", methods=["POST"])
 @jwt_required()
 def investigate_discrepancy(discrepancy_id):
-    user = _current_user()
-    if user is None:
-        return jsonify({"error": "user not found"}), 401
-
-    row = _business_discrepancies(user).filter(Discrepancy.id == discrepancy_id).first()
-    if row is None:
-        return jsonify({"error": "discrepancy not found"}), 404
-    discrepancy, product = row
-
+    discrepancy, product = _get_business_discrepancy(discrepancy_id)
     if discrepancy.status != "open":
-        return jsonify({"error": "discrepancy is not open"}), 409
+        abort(409, description="discrepancy is not open")
 
-    data = request.get_json(silent=True) or {}
+    data = json_body()
     cause = data.get("cause")
-    finding = data.get("finding")
-
     if cause not in CAUSES:
-        return jsonify({"error": f"cause must be one of: {', '.join(CAUSES)}"}), 400
-    if not isinstance(finding, str) or not 1 <= len(finding.strip()) <= MAX_FINDING_LENGTH:
-        return jsonify({"error": "finding must be text of 1 to 1000 characters"}), 400
+        raise ValidationError("cause", f"cause must be one of: {', '.join(CAUSES)}")
+    finding = read_string(data, "finding", MAX_FINDING_LENGTH, required=True)
 
-    discrepancy.cause = cause
-    discrepancy.finding = finding.strip()
-    discrepancy.investigated_by = user.id
-    discrepancy.investigated_at = utcnow()
-    discrepancy.status = "investigated"
+    _move_status(
+        discrepancy,
+        "open",
+        status="investigated",
+        cause=cause,
+        finding=finding,
+        investigated_by=current_user.id,
+        investigated_at=utcnow(),
+    )
+    log_action(
+        current_user,
+        "discrepancy.investigated",
+        "discrepancy",
+        discrepancy.id,
+        {"cause": cause},
+    )
     db.session.commit()
 
     return jsonify(serialize_discrepancy(discrepancy, product)), 200
+
+
+@discrepancies_bp.route("/<discrepancy_id>/resolve", methods=["POST"])
+@jwt_required()
+def resolve_discrepancy(discrepancy_id):
+    discrepancy, product = _get_business_discrepancy(discrepancy_id)
+    require_owner(current_user, "only the business owner can resolve a discrepancy")
+    if discrepancy.status != "investigated":
+        abort(409, description="only an investigated discrepancy can be resolved")
+
+    _move_status(
+        discrepancy,
+        "investigated",
+        status="resolved",
+        resolved_by=current_user.id,
+        resolved_at=utcnow(),
+    )
+
+    # Stock is the sum of the movement ledger, so the correction is a movement
+    # of the counted difference. With no sales since the count, stock ends up
+    # exactly at the counted figure.
+    correction = StockMovement(
+        product_id=product.id,
+        user_id=current_user.id,
+        movement_type="adjustment_in" if discrepancy.difference > 0 else "adjustment_out",
+        quantity=abs(discrepancy.difference),
+        note=f"Resolved discrepancy {discrepancy.id}",
+    )
+    db.session.add(correction)
+    db.session.flush()
+    stock_after = current_stock(product.id)
+    product.quantity_on_hand = stock_after
+
+    log_action(
+        current_user,
+        "discrepancy.resolved",
+        "discrepancy",
+        discrepancy.id,
+        {
+            "movement_id": correction.id,
+            "difference": discrepancy.difference,
+            "stock_after": stock_after,
+        },
+    )
+    # One commit: the status change, the correction and the audit row are
+    # saved together or not at all.
+    db.session.commit()
+
+    return jsonify({
+        "discrepancy": serialize_discrepancy(discrepancy, product),
+        "movement_id": correction.id,
+        "stock_after": stock_after,
+    }), 200
