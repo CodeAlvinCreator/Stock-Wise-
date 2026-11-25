@@ -118,6 +118,10 @@ a { color: inherit; text-decoration: none; }
 }
 
 .btn {
+  /* inline-flex centres the text for links styled as buttons too, not just <button> */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   min-height: 52px;
   border-radius: var(--radius);
