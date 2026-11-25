@@ -51,20 +51,24 @@ export function ProductsPage() {
       )}
 
       {visible.map((p) => (
-        <Link key={p.id} to={`/movements?product=${p.id}`} className="row">
-          <div className="row__info">
+        // Two separate links: one link can't sit inside another
+        <div key={p.id} className="row">
+          <Link to={`/movements?product=${p.id}`} className="row__info">
             <strong>{p.name}</strong>
             <span className="muted small">
               {[p.sku, `${formatRwf(p.unit_cost)} / ${p.unit || 'unit'}`].filter(Boolean).join(' · ')}
             </span>
-          </div>
+          </Link>
           <div className="row__stock">
             <strong>
               {p.stock} {p.unit || 'units'}
             </strong>
             <StockBadge stock={p.stock} reorderLevel={p.reorder_level} />
+            <Link to={`/products/${p.id}/edit`} className="small strong-primary" aria-label={`Edit ${p.name}`}>
+              Edit
+            </Link>
           </div>
-        </Link>
+        </div>
       ))}
       {!loading && products.length > 0 && visible.length === 0 && <p className="muted">No products match.</p>}
 
