@@ -1,7 +1,5 @@
-import re
 import uuid
 
-import bcrypt
 from flask import Blueprint, abort, jsonify
 from flask_jwt_extended import (
     create_access_token,
@@ -11,21 +9,22 @@ from flask_jwt_extended import (
     verify_jwt_in_request,
 )
 
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+
 from app import db
 from app.errors import ValidationError
 from app.models import Business, User
 from app.services.access import require_owner
+from app.services.accounts import deactivate_user
 from app.services.audit import log_action
-from app.services.validation import json_body, read_string
+from app.services.passwords import hash_password, password_matches, read_new_password
+from app.services.validation import json_body, normalize_email, read_email, read_string
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 ALLOWED_ROLES = {"owner", "staff"}
-MIN_PASSWORD_LENGTH = 8
-# bcrypt refuses passwords longer than 72 bytes.
-MAX_PASSWORD_BYTES = 72
-# Not a full RFC check, just enough to catch typos like a missing "@" or domain.
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+EMAIL_TAKEN = "an account with this email already exists"
 
 
 def _user_to_dict(user):
@@ -38,27 +37,24 @@ def _user_to_dict(user):
     }
 
 
-def _read_password(data):
-    password = data.get("password")
-    if not isinstance(password, str) or len(password) < MIN_PASSWORD_LENGTH:
-        raise ValidationError(
-            "password", f"password must be at least {MIN_PASSWORD_LENGTH} characters"
-        )
-    if len(password.encode()) > MAX_PASSWORD_BYTES:
-        raise ValidationError("password", "password must be at most 72 bytes")
-    return password
+def find_user_by_email(email):
+    # lower() matches the unique index, so the lookup and the index agree
+    # even for a row saved before emails were normalised.
+    return User.query.filter(func.lower(User.email) == normalize_email(email)).first()
+
+
+def _email_taken():
+    return ValidationError("email", EMAIL_TAKEN, status=409)
 
 
 @auth_bp.post("/register")
 def register():
     data = json_body()
     name = read_string(data, "name", 120, required=True)
-    email = read_string(data, "email", 255, required=True)
-    if not EMAIL_PATTERN.match(email):
-        raise ValidationError("email", "email is not a valid address")
-    password = _read_password(data)
-    if User.query.filter_by(email=email).first():
-        abort(409, description="email already used")
+    email = read_email(data)
+    password = read_new_password(data)
+    if find_user_by_email(email):
+        raise _email_taken()
 
     added_by = None
     business_id = data.get("business_id")
@@ -84,19 +80,27 @@ def register():
         business_id = business.id
         role = "owner"
 
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     user = User(
         id=str(uuid.uuid4()),
         business_id=business_id,
         name=name,
         email=email,
-        password_hash=hashed,
+        password_hash=hash_password(password),
         role=role,
     )
     db.session.add(user)
     if added_by is not None:
-        log_action(added_by, "user.created", "user", user.id, {"email": email, "role": role})
-    db.session.commit()
+        # Only the role is logged. An email in the audit log would outlive the
+        # anonymising that happens when the person is removed.
+        log_action(added_by, "user.created", "user", user.id, {"role": role})
+    # The business, the user and the audit row are saved in one commit. If two
+    # sign-ups with the same email race past the check above, the unique index
+    # rejects the second and the rollback leaves no orphan business behind.
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        raise _email_taken() from None
     return jsonify(
         id=user.id, email=user.email, role=user.role, business_id=user.business_id
     ), 201
@@ -108,12 +112,8 @@ def login():
     email, password = data.get("email"), data.get("password")
     if not isinstance(email, str) or not isinstance(password, str):
         raise ValidationError(None, "email and password are required")
-    user = User.query.filter_by(email=email.strip()).first()
-    if (
-        not user
-        or len(password.encode()) > MAX_PASSWORD_BYTES
-        or not bcrypt.checkpw(password.encode(), user.password_hash.encode())
-    ):
+    user = find_user_by_email(email)
+    if not user or not user.is_active or not password_matches(user, password):
         abort(401, description="wrong email or password")
     token = create_access_token(
         identity=user.id,
@@ -127,6 +127,26 @@ def login():
 def list_team():
     require_owner(current_user, "only the business owner can view the team")
     members = (
-        User.query.filter_by(business_id=current_user.business_id).order_by(User.name).all()
+        User.query.filter_by(business_id=current_user.business_id, is_active=True)
+        .order_by(User.name)
+        .all()
     )
     return jsonify({"users": [_user_to_dict(member) for member in members]}), 200
+
+
+@auth_bp.delete("/team/<user_id>")
+@jwt_required()
+def remove_team_member(user_id):
+    require_owner(current_user, "only the business owner can remove team members")
+    member = db.session.get(User, user_id)
+    if member is None or member.business_id != current_user.business_id or not member.is_active:
+        abort(404, description="team member not found")
+    if member.id == current_user.id:
+        abort(400, description="you can't remove yourself here; delete the business instead")
+    # Owners can't remove each other, so a co-owner can't lock the other one out.
+    if member.role == "owner":
+        abort(403, description="only staff members can be removed")
+
+    deactivate_user(member, removed_by=current_user)
+    db.session.commit()
+    return "", 204

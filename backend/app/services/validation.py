@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from flask import request
@@ -7,6 +8,8 @@ from app.errors import ValidationError
 # Largest value a PostgreSQL INTEGER column can hold. Anything bigger would
 # crash the insert, so it is rejected as bad input instead.
 MAX_INT = 2_147_483_647
+# Not a full RFC check, just enough to catch typos like a missing "@" or domain.
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def json_body():
@@ -32,6 +35,19 @@ def read_string(data, field, max_length, required=False):
     if len(value) > max_length:
         raise ValidationError(field, f"{field} must be at most {max_length} characters")
     return value
+
+
+def normalize_email(value):
+    """Emails are compared trimmed and lowercased, so "Favour@Shop.rw " and
+    "favour@shop.rw" are the same account."""
+    return value.strip().lower()
+
+
+def read_email(data, field="email"):
+    email = read_string(data, field, 255, required=True)
+    if not EMAIL_PATTERN.match(email):
+        raise ValidationError(field, f"{field} is not a valid address")
+    return normalize_email(email)
 
 
 def read_int(data, field, minimum=0, default=None):

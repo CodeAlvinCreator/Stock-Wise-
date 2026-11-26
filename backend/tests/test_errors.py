@@ -34,7 +34,7 @@ def test_token_for_deleted_user_returns_401(client):
     token = create_access_token(identity="no-such-user")
     response = client.get("/api/products", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401
-    assert response.get_json() == {"error": "user not found"}
+    assert response.get_json() == {"error": "this account no longer exists"}
 
 
 def test_unexpected_error_returns_generic_500(app, client):

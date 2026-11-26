@@ -81,6 +81,11 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
   return (await response.json()) as T
 }
 
+// For DELETE endpoints that answer 204 with no body
+async function requestEmpty(path: string, options: { method?: string; body?: unknown } = {}): Promise<void> {
+  await send(path, options)
+}
+
 async function download(path: string): Promise<Blob> {
   return (await send(path)).blob()
 }
@@ -205,6 +210,15 @@ export interface TeamMember {
   business_id: string
 }
 
+export interface Account {
+  id: string
+  name: string
+  email: string
+  role: Role
+  business_id: string
+  business_name: string
+}
+
 export interface NewCount {
   id: string
   product_id: string
@@ -239,6 +253,18 @@ export const api = {
     }),
 
   listTeam: () => request<{ users: TeamMember[] }>('/api/auth/team'),
+
+  // Owner only. Deactivates and anonymises a staff member; their history stays.
+  removeTeamMember: (userId: string) => requestEmpty(`/api/auth/team/${userId}`, { method: 'DELETE' }),
+
+  getAccount: () => request<Account>('/api/account'),
+
+  // Staff only. Deactivates and anonymises the logged-in user.
+  deleteOwnAccount: (password: string) => requestEmpty('/api/account', { method: 'DELETE', body: { password } }),
+
+  // Owner only. Permanently deletes the business and everything in it.
+  deleteBusiness: (password: string, business_name: string) =>
+    requestEmpty('/api/account/business', { method: 'DELETE', body: { password, business_name } }),
 
   listProducts: () => request<ProductWithStock[]>('/api/products'),
 

@@ -10,13 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 class ValidationError(Exception):
-    """Bad input from the client. Becomes a 400 that names the field, so the
-    frontend can show the message next to the right input."""
+    """Bad input from the client. Becomes a 400 (or the given status) that
+    names the field, so the frontend can show the message next to the right input."""
 
-    def __init__(self, field, message):
+    def __init__(self, field, message, status=400):
         super().__init__(message)
         self.field = field
         self.message = message
+        self.status = status
 
 
 def _error(message, status):
@@ -26,7 +27,7 @@ def _error(message, status):
 def register_error_handlers(app):
     @app.errorhandler(ValidationError)
     def handle_validation_error(error):
-        return jsonify(error=error.message, field=error.field), 400
+        return jsonify(error=error.message, field=error.field), error.status
 
     @app.errorhandler(HTTPException)
     def handle_http_error(error):
@@ -46,12 +47,14 @@ def register_error_handlers(app):
 
 @jwt.user_lookup_loader
 def load_user(_jwt_header, jwt_data):
-    return db.session.get(User, jwt_data["sub"])
+    # A removed user's token stops working on their very next request.
+    user = db.session.get(User, jwt_data["sub"])
+    return user if user is not None and user.is_active else None
 
 
 @jwt.user_lookup_error_loader
 def user_not_found(_jwt_header, _jwt_data):
-    return _error("user not found", 401)
+    return _error("this account no longer exists", 401)
 
 
 @jwt.unauthorized_loader

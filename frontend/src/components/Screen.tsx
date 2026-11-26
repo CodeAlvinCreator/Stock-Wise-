@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '../auth/context'
 import type { FailedItem } from '../offline/outbox'
 
@@ -32,9 +32,14 @@ export function Screen({ title, children }: { title: string; children: ReactNode
           <p className="app-bar__sub">{session?.email}</p>
           <h1 className="app-bar__title">{title}</h1>
         </div>
-        <button type="button" className="app-bar__logout" onClick={logout}>
-          Log out
-        </button>
+        <div className="app-bar__actions">
+          <Link to="/account" className="app-bar__logout">
+            Account
+          </Link>
+          <button type="button" className="app-bar__logout" onClick={logout}>
+            Log out
+          </button>
+        </div>
       </header>
 
       <main className="content">

@@ -1,34 +1,32 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { toFormError } from '../api'
 import type { FormError } from '../api'
 import { useAuth } from '../auth/context'
-import { FieldError, FormAlert } from '../components/FieldError'
+import { AuthLayout } from '../components/AuthLayout'
+import { FieldError, FieldMessage, FormAlert } from '../components/FieldError'
+import { PasswordInput } from '../components/PasswordInput'
+import { emailProblem } from '../formRules'
 
-const FORM_FIELDS = ['name', 'business_name', 'email', 'password']
-
-// One page for both logging in and registering a new shop.
-// Registering creates the business and makes this person its owner.
 export function LoginPage() {
-  const { session, login, register } = useAuth()
-  const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [name, setName] = useState('')
-  const [businessName, setBusinessName] = useState('')
+  const { session, login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [emailTouched, setEmailTouched] = useState(false)
   const [error, setError] = useState<FormError | null>(null)
   const [busy, setBusy] = useState(false)
 
   if (session) return <Navigate to="/products" replace />
+
+  const emailHint = emailTouched ? emailProblem(email) : null
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
     setBusy(true)
     try {
-      if (mode === 'login') await login(email.trim(), password)
-      else await register(name.trim(), email.trim(), password, businessName.trim())
+      await login(email.trim(), password)
     } catch (err) {
       setError(toFormError(err, 'Something went wrong'))
     } finally {
@@ -36,68 +34,48 @@ export function LoginPage() {
     }
   }
 
-  const isRegister = mode === 'register'
-
   return (
-    <div className="login">
-      <div className="logo">
-        <svg width="44" height="44" viewBox="0 0 44 44" fill="none" aria-hidden="true">
-          <rect width="44" height="44" rx="12" fill="var(--primary)" />
-          <path d="M12 17l10-5 10 5v11l-10 5-10-5z M12 17l10 5 10-5 M22 22v11" stroke="#fff" strokeWidth="2" strokeLinejoin="round" />
-        </svg>
-        <span>StockWise</span>
-      </div>
-      <p className="muted">Know what's on your shelves, and prove it to your lender.</p>
-
-      <form className="stack" onSubmit={handleSubmit}>
-        {isRegister && (
-          <>
-            <label className="field">
-              <span>Your name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
-              <FieldError error={error} field="name" />
-            </label>
-            <label className="field">
-              <span>Shop name</span>
-              <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} required placeholder="Kimironko Mini Market" />
-              <FieldError error={error} field="business_name" />
-            </label>
-          </>
-        )}
-        <label className="field">
-          <span>Email</span>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
-          <FieldError error={error} field="email" />
-        </label>
-        <label className="field">
-          <span>Password</span>
+    <AuthLayout title="Log in">
+      <form className="stack" onSubmit={handleSubmit} noValidate>
+        <div className="field">
+          <label htmlFor="login-email">Email</label>
           <input
-            type="password"
+            id="login-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setEmailTouched(true)}
+            required
+            autoComplete="email"
+            aria-invalid={emailHint !== null}
+          />
+          <FieldMessage message={emailHint} />
+          <FieldError error={error} field="email" />
+        </div>
+        <div className="field">
+          <label htmlFor="login-password">Password</label>
+          <PasswordInput
+            id="login-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={isRegister ? 8 : undefined}
-            autoComplete={isRegister ? 'new-password' : 'current-password'}
+            autoComplete="current-password"
           />
           <FieldError error={error} field="password" />
-        </label>
+        </div>
 
-        <FormAlert error={error} fields={FORM_FIELDS} />
+        <FormAlert error={error} fields={['email', 'password']} />
 
-        <button className="btn btn--primary" disabled={busy}>
-          {busy ? 'Please wait…' : isRegister ? 'Create my shop' : 'Log in'}
+        <button className="btn btn--primary" disabled={busy || emailProblem(email) !== null || password === ''}>
+          {busy ? 'Please wait…' : 'Log in'}
         </button>
-        <button
-          type="button"
-          className="btn btn--secondary"
-          onClick={() => {
-            setMode(isRegister ? 'login' : 'register')
-            setError(null)
-          }}
-        >
-          {isRegister ? 'I already have an account' : 'Register a new shop'}
-        </button>
+        <p className="center small">
+          New to StockWise?{' '}
+          <Link className="strong-primary" to="/signup">
+            Create your shop
+          </Link>
+        </p>
       </form>
-    </div>
+    </AuthLayout>
   )
 }

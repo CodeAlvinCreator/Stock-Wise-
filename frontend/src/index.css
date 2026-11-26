@@ -12,6 +12,7 @@
   --muted: #5f6b66;
   --border: #dce1de;
   --radius: 12px;
+  --display-font: 'Bricolage Grotesque Variable', Inter, system-ui, sans-serif;
 
   font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
@@ -48,7 +49,7 @@ a { color: inherit; text-decoration: none; }
   color: #fff;
 }
 .app-bar__sub { font-size: 12px; font-weight: 500; opacity: 0.8; }
-.app-bar__title { font-size: 20px; font-weight: 700; }
+.app-bar__title { font-family: var(--display-font); font-size: 20px; font-weight: 700; }
 .app-bar__logout {
   border: 1px solid rgb(255 255 255 / 0.5);
   border-radius: 999px;
@@ -93,8 +94,8 @@ a { color: inherit; text-decoration: none; }
 .tab--active { color: var(--primary); }
 
 /* ---------- Login ---------- */
-.login { display: flex; flex-direction: column; gap: 16px; padding: 72px 20px 32px; }
-.logo { display: flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 700; }
+.login { display: flex; flex-direction: column; gap: 16px; padding: 16px 20px 32px; }
+.logo { display: flex; align-items: center; gap: 10px; font-family: var(--display-font); font-size: 26px; font-weight: 700; }
 
 /* ---------- Forms ---------- */
 .stack { display: flex; flex-direction: column; gap: 14px; }
@@ -230,6 +231,72 @@ a { color: inherit; text-decoration: none; }
 .table th { text-align: left; font-size: 13px; color: var(--muted); font-weight: 600; padding-bottom: 6px; }
 .table td { padding: 6px 0; }
 .table .num { text-align: right; }
+
+/* ---------- Accounts, passwords and dialogs ---------- */
+.field > label { font-size: 13px; font-weight: 500; color: var(--muted); }
+.field input[aria-invalid='true'] { border-color: var(--danger); }
+/* Error messages are spans too, so they need to beat the muted .field > span label style */
+.field > .text-danger { color: var(--danger); }
+
+.password-input { position: relative; }
+.password-input input { padding-right: 52px; }
+.password-input__toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.password-input__toggle[aria-pressed='true'] { color: var(--primary); }
+
+.strength--weak { color: var(--danger); }
+.strength--okay { color: #9a6412; }
+.strength--strong { color: var(--primary); }
+
+.btn--danger { background: var(--danger); color: #fff; border: none; }
+.btn--quiet { background: var(--surface); color: var(--danger); border: 1px solid var(--border); min-height: 44px; }
+.danger-zone { border-color: var(--danger); }
+
+.dialog {
+  width: min(440px, calc(100vw - 32px));
+  padding: 20px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.3);
+}
+.dialog::backdrop { background: rgb(12 43 35 / 0.55); }
+.dialog p { font-size: 15px; line-height: 1.5; }
+.dialog__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.app-bar__actions { display: flex; gap: 8px; }
+.app-bar__logout { display: inline-flex; align-items: center; min-height: 32px; }
+
+.login__title { font-family: var(--display-font); font-size: 24px; }
+.back-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--primary); font-weight: 600; font-size: 14px; }
+
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* ---------- Text helpers ---------- */
 .muted { color: var(--muted); }
