@@ -28,10 +28,18 @@ class User(db.Model):
         db.String(36), db.ForeignKey("businesses.id"), nullable=False, index=True
     )
     name = db.Column(db.String(120), nullable=False)
+    # Always stored trimmed and lowercased. The index on lower(email) also
+    # stops "Favour@shop.rw" and "favour@shop.rw" becoming two accounts.
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(30), nullable=False, default="staff")
+    # A removed user is deactivated and anonymised instead of deleted, so the
+    # movements and audit rows that point at them stay intact.
+    is_active = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    deactivated_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow)
+
+    __table_args__ = (db.Index("uq_users_email_lower", db.func.lower(email), unique=True),)
 
 
 class Product(db.Model):

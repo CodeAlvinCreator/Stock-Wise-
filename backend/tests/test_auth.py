@@ -1,6 +1,7 @@
 import pytest
+from flask_jwt_extended import decode_token
 
-from app.models import AuditLog
+from app.models import AuditLog, Business
 
 
 NEW_USER = {
@@ -149,3 +150,75 @@ def test_staff_cannot_list_team(client):
 
 def test_team_requires_token(client):
     assert client.get("/api/auth/team").status_code == 401
+
+
+@pytest.mark.parametrize("email", ["a@b.com", "A@B.COM", "  a@b.com  ", "\tA@b.Com "])
+def test_same_email_in_any_case_or_spacing_returns_409(client, email):
+    client.post("/api/auth/register", json=NEW_USER)
+
+    r = client.post("/api/auth/register",
+                    json={**NEW_USER, "email": email, "business_name": "Second Shop"})
+
+    assert r.status_code == 409
+    assert r.get_json() == {"error": "an account with this email already exists",
+                            "field": "email"}
+    # The failed sign-up leaves no orphan business behind.
+    assert Business.query.count() == 1
+
+
+def test_emails_are_saved_trimmed_and_lowercased(client):
+    r = client.post("/api/auth/register", json={**NEW_USER, "email": "  Favour@Shop.RW "})
+    assert r.get_json()["email"] == "favour@shop.rw"
+
+
+@pytest.mark.parametrize("email", ["a@b.com", "A@B.com", " a@b.com "])
+def test_original_account_logs_in_with_any_case(client, email):
+    original = client.post("/api/auth/register", json=NEW_USER).get_json()
+    client.post("/api/auth/register", json={**NEW_USER, "email": "A@B.COM"})
+
+    r = client.post("/api/auth/login", json={"email": email, "password": "secret123"})
+
+    assert r.status_code == 200
+    assert decode_token(r.get_json()["access_token"])["sub"] == original["id"]
+
+
+def test_adding_staff_with_a_taken_email_returns_409(client):
+    owner, headers = _owner_token(client)
+    r = client.post("/api/auth/register", headers=headers,
+                    json={"name": "Staff", "email": "A@B.com", "password": "pw123456",
+                          "business_id": owner["business_id"]})
+    assert r.status_code == 409
+    assert r.get_json()["field"] == "email"
+
+
+def test_racing_sign_ups_get_409_and_leave_no_orphan_business(client, monkeypatch):
+    client.post("/api/auth/register", json=NEW_USER)
+    # Pretend the second request passed the check before the first one committed.
+    monkeypatch.setattr("app.routes.auth.find_user_by_email", lambda email: None)
+
+    r = client.post("/api/auth/register", json={**NEW_USER, "business_name": "Second Shop"})
+
+    assert r.status_code == 409
+    assert Business.query.count() == 1
+
+
+@pytest.mark.parametrize("password", ["abcdefgh", "12345678", "--------"])
+def test_password_needs_a_letter_and_a_number(client, password):
+    r = client.post("/api/auth/register", json={**NEW_USER, "password": password})
+    assert r.status_code == 400
+    assert r.get_json() == {"error": "password must include at least one letter and one number",
+                            "field": "password"}
+
+
+@pytest.mark.parametrize("password", ["abcdefg1", "Mot2passe", "ijambo ry'ibanga 7"])
+def test_password_with_a_letter_and_a_number_is_accepted(client, password):
+    r = client.post("/api/auth/register", json={**NEW_USER, "password": password})
+    assert r.status_code == 201
+
+
+def test_staff_password_follows_the_same_rule(client):
+    owner, headers = _owner_token(client)
+    r = client.post("/api/auth/register", headers=headers,
+                    json={"name": "Staff", "email": "s@b.com", "password": "onlyletters",
+                          "business_id": owner["business_id"]})
+    assert r.status_code == 400
