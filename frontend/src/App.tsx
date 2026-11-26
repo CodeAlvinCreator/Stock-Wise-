@@ -7,6 +7,7 @@ import { AuditLogPage } from './pages/AuditLogPage'
 import { DiscrepanciesPage } from './pages/DiscrepanciesPage'
 import { InventoryValuePage } from './pages/InventoryValuePage'
 import { InvestigatePage } from './pages/InvestigatePage'
+import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
 import { ProductsPage } from './pages/ProductsPage'
 import { RecordMovementPage } from './pages/RecordMovementPage'
@@ -32,6 +33,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/products" element={<RequireLogin><ProductsPage /></RequireLogin>} />
@@ -43,7 +45,8 @@ export default function App() {
           <Route path="/team" element={<RequireOwner><TeamPage /></RequireOwner>} />
           <Route path="/audit" element={<RequireOwner><AuditLogPage /></RequireOwner>} />
           <Route path="/account" element={<RequireLogin><AccountPage /></RequireLogin>} />
-          <Route path="*" element={<Navigate to="/products" replace />} />
+          {/* Unknown paths go home, which forwards logged-in users to /products */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
