@@ -48,6 +48,7 @@ export function setToken(token: string | null): void {
 // Every request goes through here. It attaches the login token and turns
 // every kind of failure into an ApiError:
 //   status 0   no network or server unreachable (offline screens queue on this)
+//   status -1  the server is up but the browser blocked its reply (see blockedOrOffline)
 //   401        login missing or expired: the user is logged out
 //   otherwise  the {error, field} message the backend sent back
 async function send(path: string, options: { method?: string; body?: unknown } = {}): Promise<Response> {
@@ -63,7 +64,7 @@ async function send(path: string, options: { method?: string; body?: unknown } =
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     })
   } catch {
-    throw new ApiError(0, 'Cannot reach the server. Check your connection and try again.')
+    throw await blockedOrOffline()
   }
 
   if (response.ok) return response
@@ -74,6 +75,24 @@ async function send(path: string, options: { method?: string; body?: unknown } =
   const message =
     data.error ?? (response.status >= 500 ? 'The server had a problem. Please try again.' : `Request failed (${response.status})`)
   throw new ApiError(response.status, message, data.field ?? null)
+}
+
+// fetch() fails the same way when the phone is offline and when the browser
+// blocks the reply. The browser blocks it when the server has no such route:
+// the CORS check before the real request gets a 404, so the app never sees it.
+// A plain GET to /api/health needs no CORS check, so it tells the two apart.
+// The blocked case uses -1, not a 4xx, so the offline outbox keeps the item
+// instead of deleting it (a brief network blip could look the same).
+async function blockedOrOffline(): Promise<ApiError> {
+  try {
+    const health = await fetch(`${API_URL}/api/health`)
+    if (health.ok) {
+      return new ApiError(-1, 'The server could not handle this request. It may not support this action yet.')
+    }
+  } catch {
+    // The server really can't be reached
+  }
+  return new ApiError(0, 'Cannot reach the server. Check your connection and try again.')
 }
 
 async function request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
@@ -270,6 +289,13 @@ export const api = {
 
   createProduct: (product: { name: string; sku?: string; unit?: string; unit_cost: number; reorder_level: number }) =>
     request<Product>('/api/products', { method: 'POST', body: product }),
+
+  getProduct: (id: string) => request<Product>(`/api/products/${id}`),
+
+  // Stock is not editable here: it only changes through movements and approved counts.
+  // An empty sku or unit clears it.
+  updateProduct: (id: string, changes: { name: string; sku: string; unit: string; unit_cost: number; reorder_level: number }) =>
+    request<Product>(`/api/products/${id}`, { method: 'PUT', body: changes }),
 
   recordMovement: (movement: NewMovement) => request<Movement>('/api/movements', { method: 'POST', body: movement }),
 

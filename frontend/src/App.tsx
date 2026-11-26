@@ -5,6 +5,7 @@ import { useAuth } from './auth/context'
 import { AccountPage } from './pages/AccountPage'
 import { AuditLogPage } from './pages/AuditLogPage'
 import { DiscrepanciesPage } from './pages/DiscrepanciesPage'
+import { EditProductPage } from './pages/EditProductPage'
 import { InventoryValuePage } from './pages/InventoryValuePage'
 import { InvestigatePage } from './pages/InvestigatePage'
 import { LandingPage } from './pages/LandingPage'
@@ -37,7 +38,8 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/products" element={<RequireLogin><ProductsPage /></RequireLogin>} />
-          <Route path="/movements" element={<RequireLogin><RecordMovementPage /></RequireLogin>} />
+          <Route path="/products/:id/edit" element={<RequireLogin><EditProductPage /></RequireLogin>} />
+          <Route path="/movements"element={<RequireLogin><RecordMovementPage /></RequireLogin>} />
           <Route path="/count" element={<RequireLogin><StockCountPage /></RequireLogin>} />
           <Route path="/investigate" element={<RequireLogin><InvestigatePage /></RequireLogin>} />
           <Route path="/discrepancies" element={<RequireLogin><DiscrepanciesPage /></RequireLogin>} />
