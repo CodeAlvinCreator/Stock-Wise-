@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/context'
+import { AccountPage } from './pages/AccountPage'
 import { AuditLogPage } from './pages/AuditLogPage'
 import { DiscrepanciesPage } from './pages/DiscrepanciesPage'
 import { InventoryValuePage } from './pages/InventoryValuePage'
@@ -9,6 +10,7 @@ import { InvestigatePage } from './pages/InvestigatePage'
 import { LoginPage } from './pages/LoginPage'
 import { ProductsPage } from './pages/ProductsPage'
 import { RecordMovementPage } from './pages/RecordMovementPage'
+import { SignupPage } from './pages/SignupPage'
 import { StockCountPage } from './pages/StockCountPage'
 import { TeamPage } from './pages/TeamPage'
 
@@ -31,6 +33,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
           <Route path="/products" element={<RequireLogin><ProductsPage /></RequireLogin>} />
           <Route path="/movements" element={<RequireLogin><RecordMovementPage /></RequireLogin>} />
           <Route path="/count" element={<RequireLogin><StockCountPage /></RequireLogin>} />
@@ -39,6 +42,7 @@ export default function App() {
           <Route path="/reports" element={<RequireLogin><InventoryValuePage /></RequireLogin>} />
           <Route path="/team" element={<RequireOwner><TeamPage /></RequireOwner>} />
           <Route path="/audit" element={<RequireOwner><AuditLogPage /></RequireOwner>} />
+          <Route path="/account" element={<RequireLogin><AccountPage /></RequireLogin>} />
           <Route path="*" element={<Navigate to="/products" replace />} />
         </Routes>
       </BrowserRouter>

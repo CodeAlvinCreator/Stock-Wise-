@@ -40,9 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const { access_token } = await api.login(email, password)
+    // The server matches emails trimmed and lowercased, so show it the same way
+    const savedEmail = email.trim().toLowerCase()
     setToken(access_token)
-    localStorage.setItem(EMAIL_KEY, email)
-    setSession(sessionFromToken(access_token, email))
+    localStorage.setItem(EMAIL_KEY, savedEmail)
+    setSession(sessionFromToken(access_token, savedEmail))
     // Anything queued while the old login had expired can be sent now.
     void flushOutbox()
   }, [])

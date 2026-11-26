@@ -33,6 +33,12 @@ function sendItem(item: OutboxItem): Promise<unknown> {
   return item.kind === 'count' ? api.submitCount(item.body) : api.recordMovement(item.body)
 }
 
+// Used when an account is deleted, so its queued items are never sent under someone else's login.
+export async function clearOutbox(): Promise<void> {
+  await db.outbox.clear()
+  announceChange()
+}
+
 export function countOutbox(): Promise<number> {
   return db.outbox.count()
 }
