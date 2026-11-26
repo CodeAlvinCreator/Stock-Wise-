@@ -6,7 +6,10 @@ StockWise is an offline-first inventory management system designed for Rwandan S
 
 ## Features
 
-- **Shops and roles.** Registering creates a shop and makes you its `owner`. Owners add `staff` (or other owners) from the Team screen.
+- **Public home page** at `/` that explains StockWise, with sign-up at `/signup` and login at `/login`. Logged-in users who open `/` go straight to their products, and the installed app opens on `/products`.
+- **Shops and roles.** Registering creates a shop and makes you its `owner`. Owners add `staff` (or other owners) from the Team screen, and can remove staff there.
+- **One account per email.** Emails are trimmed and lowercased everywhere, so `Favour@Shop.rw` and `favour@shop.rw` are the same account.
+- **Account deletion.** Staff can delete their own account, owners can remove staff, and an owner can permanently delete the whole business from the Account screen. See [Account deletion](#account-deletion).
 - **Products** with SKU, unit, cost price in RWF, and a reorder level. Products at or below their reorder level are flagged "Low stock" on the Products screen.
 - **Stock movements** (purchase, sale, return, damage). Stock is always the sum of the movement ledger, never a number someone typed in.
 - **Blind stock counts.** The expected figure only appears after the count is saved. A count that doesn't match creates a discrepancy.
@@ -61,6 +64,7 @@ Checks (the same ones CI runs): `npm run lint` and `npm run build`. See `fronten
 | `CORS_ORIGINS` | backend | in production | `http://localhost:5173` | Websites allowed to call the API, comma separated. Set it to the Vercel URL. |
 | `FLASK_APP` | backend | for `flask` commands | | `run.py` |
 | `VITE_API_URL` | frontend | in production | `http://localhost:5000` | Where the API is. Read at build time, so rebuild after changing it. |
+| `VITE_SITE_URL` | frontend | for link previews | | The site's own address, e.g. `https://stockwise.vercel.app`. The build uses it to make the social preview image link absolute, which WhatsApp, Facebook and X need. |
 
 ## API reference
 
@@ -74,16 +78,16 @@ Every error has the same shape:
 { "error": "quantity must be a whole number from 1 to 2,147,483,647", "field": "quantity" }
 ```
 
-`field` is only there for validation errors (`400`), so the app can show the message next to the right input.
+`field` is there when the error is about one input (mostly `400`, but also the `409` for a taken email and the `403` for a wrong password when deleting), so the app can show the message next to that input.
 
 | Status | Meaning |
 |---|---|
 | `400` | Bad input: a missing or wrong field, or a body that isn't a JSON object |
-| `401` | No token, an invalid or expired token, a user that no longer exists, or a wrong password at login |
-| `403` | Logged in, but your role can't do this (usually owner-only) |
+| `401` | No token, an invalid or expired token, a removed or deleted user, or a wrong password at login |
+| `403` | Logged in, but your role can't do this (usually owner-only), or the password you re-entered to delete something is wrong |
 | `404` | Not found, **including another business's ids** |
 | `405` | Wrong HTTP method |
-| `409` | Conflict: email already used, wrong discrepancy status, or a client id already used by another business |
+| `409` | Conflict: an account with this email already exists, wrong discrepancy status, or a client id already used by another business |
 | `500` | Unexpected server error. Details are logged on the server and never sent to the client |
 
 ### Health
@@ -99,17 +103,43 @@ Every error has the same shape:
 | Field | Required | Notes |
 |---|---|---|
 | `name` | yes | up to 120 characters |
-| `email` | yes | must look like an email and be unique |
-| `password` | yes | 8 characters to 72 bytes |
+| `email` | yes | must look like an email; saved trimmed and lowercased, and unique whatever the case |
+| `password` | yes | see [Password rules](#password-rules) |
 | `business_name` | one of these two | create a new business; you become its `owner` (any `role` sent is ignored) |
 | `business_id` | one of these two | join an existing business; needs a token of an owner of that business |
 | `role` | no | only used with `business_id`: `staff` (default) or `owner` |
 
-Responses: `201` returns `{id, email, role, business_id}`. `400` bad input, `403` you aren't an owner of that business (the role is read from the database, not the token), `409` email already used. Adding someone writes a `user.created` audit row.
+Responses: `201` returns `{id, email, role, business_id}` (the email as saved). `400` bad input, `403` you aren't an owner of that business (the role is read from the database, not the token), `409 {"error": "an account with this email already exists", "field": "email"}`, including when only the case or surrounding spaces differ. Adding someone writes a `user.created` audit row with their role (not their email).
 
-**`POST /api/auth/login`**: body `{email, password}`. `200` returns `{"access_token": ...}`. The token's identity is the user id, and it carries `role` and `business_id` claims. `400` if either field is missing, `401` wrong email or password.
+The new business, the user and the audit row are saved in one commit. If two sign-ups with the same email arrive at the same moment, the database's unique index rejects the second one, it gets the same `409`, and nothing from it is saved, so no empty business is left behind.
 
-**`GET /api/auth/team`**: token, owner only. `200` returns `{"users": [{id, name, email, role, business_id}]}` for your business. `403` for staff.
+**`POST /api/auth/login`**: body `{email, password}`. The email is matched trimmed and case-insensitively. `200` returns `{"access_token": ...}`. The token's identity is the user id, and it carries `role` and `business_id` claims. `400` if either field is missing, `401` wrong email or password, or a removed account.
+
+**`GET /api/auth/team`**: token, owner only. `200` returns `{"users": [{id, name, email, role, business_id}]}`: the active members of your business. `403` for staff.
+
+**`DELETE /api/auth/team/<user_id>`**: token, owner only. Removes a staff member (see [Account deletion](#account-deletion)). `204` on success. `400` if it's your own id, `403` for staff callers or when the target is an owner, `404` if the user is in another business or already removed. Writes `user.removed`.
+
+#### Password rules
+
+New passwords (sign-up and adding a team member) must be at least 8 characters, at most 72 bytes (bcrypt's limit), and include at least one letter and one number. The backend rules are in `backend/app/services/passwords.py` and the frontend shows the same rules and messages from `frontend/src/formRules.ts`. Login and the delete confirmations only check that the password is correct, so accounts made before the letter-and-number rule still work.
+
+### Account (`backend/app/routes/account.py`)
+
+**`GET /api/account`**: token. `200 {id, name, email, role, business_id, business_name}` for the logged-in user.
+
+**`DELETE /api/account`**: token, staff only. Body `{password}`. Deletes your own account (deactivated and anonymised, see below). `204` on success, `403 {"error": "password is incorrect", "field": "password"}`, `403` for owners, who delete the whole business instead. Writes `user.removed`.
+
+**`DELETE /api/account/business`**: token, owner only. Body `{password, business_name}`. The business name must match exactly, apart from spaces at either end. Permanently deletes the business and everything in it. `204` on success, `403` wrong password or a staff caller, `400` with `"field": "business_name"` when the name doesn't match. The business always comes from your own account, so there is no way to name another one.
+
+#### Account deletion
+
+| Who | How | What happens |
+|---|---|---|
+| Owner removes a staff member | Team → Remove | The user is **deactivated and anonymised**: `is_active` becomes false, the name becomes "Removed user", the email becomes `removed-<id>@stockwise.invalid` (so the real email can be used again), and the password can never match. The row stays, so their movements, counts and audit rows keep pointing at the same user id and the shop's history stays complete. |
+| Staff member deletes their own account | Account → Delete my account, with their password | The same deactivate-and-anonymise. |
+| Owner deletes the business | Account → Danger zone, with their password and the business name | Everything is **permanently deleted** in one transaction: audit log, discrepancies, stock counts, movements, products, users, then the business, children first so no foreign key is left dangling. This is the right-to-erasure path under Rwanda's data protection law (Law No 058/2021). |
+
+A removed user can't log in, and any token they still hold gets `401 {"error": "this account no longer exists"}` on its next request, because every request loads the user from the database and checks `is_active`. An owner can't remove themselves or another owner from the Team screen.
 
 ### Products (`backend/app/routes/products.py`)
 
@@ -203,8 +233,8 @@ db.session.commit()
 
 ## User guide
 
-1. **Register your shop.** Open the app, choose "Register a new shop" and fill in your name, the shop name, your email and a password. You are the owner.
-2. **Add your team.** Reports → Owner tools → Team. Enter the person's name, email and a temporary password, and choose Staff or Owner. They can log in straight away.
+1. **Register your shop.** Open the home page and press "Create your shop, free" (or go to `/signup`). Fill in your name, the shop name, your email and a password, then type the password again to confirm. The button turns on once everything is valid. You are the owner.
+2. **Add your team.** Reports → Owner tools → Team. Enter the person's name, email and a temporary password (twice), and choose Staff or Owner. They can log in straight away.
 3. **Add products.** Products → "+ Add product", with the cost per unit in RWF and the stock level at which you want a "Low stock" warning.
 4. **Record a movement.** Movements → pick the product, choose Purchase, Sale, Return or Damage, enter the quantity and save. The card shows what the stock will be after saving. With no connection it says "Saved offline" and syncs by itself later.
 5. **Count stock.** Count → type what is physically on the shelf for each product and press Save. Only then do you see the expected figure. A difference shows "Investigate now". Counts also work offline.
@@ -212,6 +242,8 @@ db.session.commit()
 7. **Resolve (owner).** Issues → Investigated → Resolve. Confirm, and the stock is corrected to the counted figure. The discrepancy moves to Resolved.
 8. **Download the loan-readiness report (owner).** Reports → choose the From and To dates → "Download loan-readiness report". The PDF opens or saves, ready to send to a lender.
 9. **Check the audit log (owner).** Reports → Owner tools → Audit log shows who did what, and when.
+10. **Remove a staff member (owner).** Team → Remove next to their name → "Remove from team". Their past records stay.
+11. **Delete your account.** Account (top right) → "Delete my account" and enter your password (staff). Owners use the Danger zone on the same screen: type the shop name and your password to delete the business and all of its data for good.
 
 ## Continuous integration
 
@@ -250,14 +282,20 @@ curl localhost:5000/api/health
 
 ### Frontend on Vercel
 
-Import the repo in Vercel with **Root Directory** `frontend` (Vite is detected, the build command is `npm run build` and the output is `dist`). Set `VITE_API_URL` to the Render API URL, with no trailing slash, then redeploy, because Vite bakes it in at build time. `frontend/vercel.json` sends every path to `index.html`, so reloading `/products` works.
+Import the repo in Vercel with **Root Directory** `frontend` (Vite is detected, the build command is `npm run build` and the output is `dist`). Set `VITE_API_URL` to the Render API URL and `VITE_SITE_URL` to the Vercel URL, both with no trailing slash, then redeploy, because Vite bakes them in at build time. `frontend/vercel.json` sends every path that isn't a real file to `index.html`, so reloading `/`, `/signup`, `/login` or `/products` works, while files such as `/robots.txt`, `/og-image.jpg` and `/sw.js` are served as they are.
+
+The service worker (`vite-plugin-pwa`) updates itself on the next visit after a deploy and deletes the old cached files, so nobody is left on an old version of the home page. The installed app's `start_url` is `/products`, so opening it from the home screen skips the home page.
 
 ## Known issues / things to watch
 
 - **Users need a business.** In `models.py`, `User.business_id` and `User.name` are required, so register needs `name` plus either `business_id` or `business_name`.
 - **Roles are `owner` and `staff` only.** They're listed in `ALLOWED_ROLES` in `auth.py`. If the team adds a role such as `manager`, add it there and check every `require_owner` call.
 - **Logins last 15 minutes.** That's flask-jwt-extended's default `JWT_ACCESS_TOKEN_EXPIRES`. When a token expires the app logs the user out and shows the login page; anything queued offline is kept and sent after the next login. There are no refresh tokens yet.
-- **No way to remove a user or reset a password yet.** An owner can add people but not deactivate them. There is also no rate limit on login attempts.
+- **No password reset yet.** A user who forgets their password needs the owner to remove them and add them again. There is also no rate limit on login attempts.
+- **Older audit rows may hold emails.** `user.created` rows written before this change saved the new member's email in `details`. New rows only save the role, but removing a user does not rewrite those older rows. Deleting the whole business does remove them.
+- **Accounts renamed by the email migration.** Migration `c4e81f2a9b30` gave newer duplicate-email accounts a `dup-<id>+...@stockwise.invalid` address, so they can't log in. Their businesses and data are untouched. If one of them matters, an owner can be given a new email directly in the database.
+- **Removing an owner.** Owners can't remove each other from the Team screen. If a shop with two owners needs one removed, that has to be done in the database for now.
+- **Social preview image.** Link previews only show the image when `VITE_SITE_URL` is set on Vercel, because social sites need an absolute URL.
 - **The login token is kept in `localStorage`.** That is simple and works offline, but any script running on the page could read it, so don't add third-party scripts to the frontend.
 - **Discrepancy cause names.** The API uses `damaged_or_expired`, `counting_mistake` and `supplier_short_delivery` (the names agreed with the Investigate screen). Renaming them now would need a data migration for rows already saved.
 - **Resolving corrects by the counted difference.** If sales were recorded between the count and the resolve, stock ends at the counted figure minus those sales, which is what is really on the shelf. `quantity_on_hand` is updated to match, but stock is always read from the ledger.

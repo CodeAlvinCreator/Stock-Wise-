@@ -21,14 +21,17 @@ put its URL in `.env` as `VITE_API_URL`.
 
 | Route | Screen | API it calls |
 | --- | --- | --- |
-| `/login` | Log in or register a new shop | `POST /api/auth/login`, `POST /api/auth/register` |
+| `/` | Public home page: what StockWise does, how it works, FAQ. Logged-in users go to `/products` | none |
+| `/login` | Log in, with show/hide password | `POST /api/auth/login` |
+| `/signup` | Create a shop: live email and password checks, confirm password, strength hint | `POST /api/auth/register` |
 | `/products` | Product list with stock, low-stock badges and warning, search, filters, add product | `GET /api/products`, `POST /api/products` |
 | `/movements` | Record a purchase, sale, return or damage, with a stock preview. Queued offline | `POST /api/movements` |
 | `/count` | Blind stock count: expected number shown only after saving. Queued offline | `POST /api/counts` |
 | `/discrepancies` | Open, investigated and resolved discrepancies. Owners resolve here | `GET /api/discrepancies`, `POST /api/discrepancies/<id>/resolve` |
 | `/investigate` | Record the cause and finding for an open discrepancy | `GET /api/discrepancies`, `POST /api/discrepancies/<id>/investigate` |
 | `/reports` | Inventory value (owner only) and the loan-readiness PDF download | `GET /api/reports/valuation`, `GET /api/reports/loan-readiness` |
-| `/team` | Owner only: team list and add a team member | `GET /api/auth/team`, `POST /api/auth/register` |
+| `/team` | Owner only: team list, add a team member, remove a staff member | `GET /api/auth/team`, `POST /api/auth/register`, `DELETE /api/auth/team/<id>` |
+| `/account` | Your details. Staff can delete their account; owners can delete the whole business | `GET /api/account`, `DELETE /api/account`, `DELETE /api/account/business` |
 | `/audit` | Owner only: who did what, newest first | `GET /api/audit-logs` |
 
 ## Files
@@ -41,6 +44,9 @@ put its URL in `.env` as `VITE_API_URL`.
   phone is back online. Items the server refuses are shown in a banner, never dropped silently
 - `src/useProducts.ts`, `src/useDiscrepancies.ts`: load data for the screens
 - `src/components/`: app bar + bottom navigation (`Screen`), stock badge, form field errors
+- `src/formRules.ts`: the email and password rules, with the same messages as the backend
+- `src/landing/`: the home page's styles, the phone mock-up and the scroll and count-up animations.
+  Animations are off when the phone asks for reduced motion, and nothing is hidden on first load
 - `src/pages/`: one file per screen
 - `src/index.css`: all styles. Colours match the Figma file's "StockWise colors" variables
 
@@ -54,5 +60,6 @@ npm run build
 ## Deploying on Vercel
 
 Set the project's Root Directory to `frontend` and the environment variable `VITE_API_URL` to the
-Render API URL (no trailing slash). Vite reads it at build time, so redeploy after changing it.
+Render API URL (no trailing slash). Also set `VITE_SITE_URL` to the Vercel URL, so link previews
+on WhatsApp and social sites show the preview image. Vite reads both at build time, so redeploy after changing them.
 The API's `CORS_ORIGINS` must include the Vercel URL, or the browser blocks every request.
